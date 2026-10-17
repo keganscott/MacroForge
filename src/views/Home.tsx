@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ArrowRight, Gamepad2, Gauge, Keyboard, ListVideo, Lock, MousePointerClick, Power, ShieldAlert, Square, Wand2 } from "lucide-react";
 
 import { SignalTrace } from "../components/brand";
 import { MasterSwitch, useNavigate } from "../components/Shell";
 import { Button, Callout, Card, cx, Eyebrow, Keycap, LiveDot, SectionTitle, StatusBadge } from "../components/ui";
 import { actionSummary, bindingTitle, fmtUs } from "../lib/describe";
+import { useActive, useActiveInterval } from "../lib/active";
 import { rulesFor } from "../lib/presets";
 import type { Binding, Stats } from "../lib/types";
 import { backend, useStore } from "../store";
@@ -15,12 +16,8 @@ export function HomeView() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
 
-  useEffect(() => {
-    const load = () => void backend().getStats().then(setStats);
-    load();
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
-  }, []);
+  const focused = useActive();
+  useActiveInterval(() => void backend().getStats().then(setStats), 3000);
 
   const active = data.profiles.filter((p) => status.activeProfiles.includes(p.id));
   const gameProfiles = active.filter((p) => p.apps.length);
@@ -109,7 +106,7 @@ export function HomeView() {
           {status.armed && (
             <div aria-hidden className="pointer-events-none absolute -top-24 -left-16 size-72 rounded-full opacity-25 blur-3xl" style={{ background: "var(--color-violet)" }} />
           )}
-          <SignalTrace live={status.armed && !status.pausedOwnWindow} className="pointer-events-none absolute inset-x-0 bottom-0 h-24 w-full" />
+          <SignalTrace live={status.armed && !status.pausedOwnWindow && focused} className="pointer-events-none absolute inset-x-0 bottom-0 h-24 w-full" />
           <div className="relative">
             <p className={cx("flex items-center gap-2 text-[10.5px] font-bold tracking-[0.14em] uppercase", status.armed ? "text-violet" : "text-ink-faint")}>
               {status.armed ? <LiveDot /> : <span aria-hidden className="size-2 rounded-full bg-ink-faint" />}
@@ -236,10 +233,7 @@ export function HomeView() {
 function ActivityCard() {
   const activity = useStore((s) => s.activity);
   const [, tick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => tick((n) => n + 1), 10_000);
-    return () => clearInterval(t);
-  }, []);
+  useActiveInterval(() => tick((n) => n + 1), 10_000);
   return (
     <div className="mb-6">
       <SectionTitle>Activity</SectionTitle>

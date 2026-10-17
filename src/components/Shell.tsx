@@ -199,7 +199,13 @@ export function MasterSwitch({ large = false }: { large?: boolean }) {
     >
       <Power aria-hidden className={large ? "size-5" : "size-4"} strokeWidth={2.4} />
       {armed ? "Bindings on" : "Bindings off"}
-      {armed && <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-white/40 blur-md animate-gm-sheen" />}
+      {armed && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 w-10 animate-gm-sheen"
+          style={{ background: "linear-gradient(90deg, transparent, rgb(255 255 255 / 0.45), transparent)", willChange: "transform" }}
+        />
+      )}
     </button>
   );
 }

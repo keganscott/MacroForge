@@ -91,6 +91,35 @@ React/TypeScript/Tailwind UI.
   ends, is stopped, or panics. Stop all, switching games, and turning
   bindings off also release hold-locks and remapped keys.
 
+## What it costs your PC
+
+Measured on the development PC with `tools/measure.ps1`, which covers the app
+and all of its WebView2 processes:
+
+| State | Processes | Private memory | CPU |
+|---|---|---|---|
+| In the tray (window closed) | 1 | ~2.5 MB | 0 % |
+| Window open, behind a game | 7 | ~210 MB | ~0.1 % of one core |
+| Window open and in use | 7 | ~210 MB | ~1 % of one core |
+| Rapid fire running, Precise timing | | | +2–3 % of one core |
+| Rapid fire running, Efficient timing | | | ~0 % |
+
+How it stays that small:
+- **Closing the window hands off to a tray-only copy.** That takes about a
+  quarter of a second, and bindings and their on/off state carry over.
+  WebView2 keeps its browser processes for the life of any process that ever
+  opened a window, so the window lives in a copy that can go away.
+- **The on-screen notice is drawn natively** (`src-tauri/src/hud.rs`), not in
+  a second browser window.
+- **The engine never wakes when idle.** The input monitor's 50 ms tick exists
+  only while the monitor is on.
+- **The mouse hook is installed only when bindings are on and something
+  needs mouse buttons.**
+- **Every animation moves or fades only** (no repainting), and nothing
+  animates or polls while MacroForge is in the background.
+- **Macro threads are started once and parked.** Pressing a trigger never
+  waits for a new thread (`examples/start_check.rs`, `load_check.rs`).
+
 ## Fair play
 
 MacroForge uses only documented Windows APIs: input hooks and `SendInput`,

@@ -12,7 +12,7 @@ export default defineConfig({
     target: "es2022",
     outDir: "dist",
     rollupOptions: {
-      input: { main: resolve(__dirname, "index.html"), hud: resolve(__dirname, "hud.html") },
+      input: { main: resolve(__dirname, "index.html") },
     },
   },
   test: { environment: "jsdom", include: ["src/**/*.test.{ts,tsx}"] },

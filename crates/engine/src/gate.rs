@@ -106,7 +106,7 @@ impl Shared {
             let code = (v & 0xFFFF) as Input;
             input::is_mouse_button(code) || input::is_wheel(code)
         };
-        self.table.read().uses_mouse
+        (self.armed.load(Ordering::Relaxed) && self.table.read().uses_mouse)
             || self.capture.load(Ordering::Relaxed)
             || self.recording.load(Ordering::Relaxed)
             || self.monitor.load(Ordering::Relaxed)
@@ -442,6 +442,16 @@ mod tests {
             })
             .collect();
         assert_eq!(got, vec![(0x46, MOD_CTRL), (0xA0, 0), (0, 0)]);
+    }
+
+    #[test]
+    fn mouse_hook_only_while_armed_or_needed() {
+        let (sh, _rx, _g) = setup(vec![b("m", 259, 0, false)]);
+        assert!(sh.wants_mouse());
+        sh.armed.store(false, Ordering::Relaxed);
+        assert!(!sh.wants_mouse(), "bindings off: no mouse hook");
+        sh.capture.store(true, Ordering::Relaxed);
+        assert!(sh.wants_mouse(), "capturing a key still needs mouse buttons");
     }
 
     #[test]

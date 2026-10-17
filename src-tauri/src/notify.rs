@@ -1,8 +1,7 @@
 //! Engine -> UI: status and live events as Tauri events, the HUD overlay and
 //! sound cues, the tray icon (lit while bindings are on) and its menu tick.
 
-use std::sync::atomic::{AtomicIsize, AtomicU64, AtomicU8, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use macroforge_engine::model::{HudPosition, Settings, SoundStyle};
 use macroforge_engine::{Hud, MonitorEvent, Notifier, Status};
@@ -19,11 +18,32 @@ struct Prefs {
     style: SoundStyle,
     volume: u8,
     pos: HudPosition,
+    accent: (u8, u8, u8),
+}
+
+/// Settings' accent names to colours (src/index.css).
+fn accent_rgb(name: &str) -> (u8, u8, u8) {
+    match name {
+        "violet" => (0x7e, 0x3b, 0xed),
+        "blue" => (0x25, 0x63, 0xeb),
+        "teal" => (0x0d, 0x94, 0x88),
+        "green" => (0x16, 0xa3, 0x4a),
+        "amber" => (0xd9, 0x77, 0x06),
+        "pink" => (0xdb, 0x27, 0x77),
+        _ => (0x22, 0xd3, 0xee),
+    }
 }
 
 impl Prefs {
     fn from(s: &Settings) -> Self {
-        Prefs { hud: s.hud, sounds: s.sounds, style: s.sound_style, volume: s.sound_volume, pos: s.hud_position }
+        Prefs {
+            hud: s.hud,
+            sounds: s.sounds,
+            style: s.sound_style,
+            volume: s.sound_volume,
+            pos: s.hud_position,
+            accent: accent_rgb(&s.accent),
+        }
     }
 }
 
@@ -38,8 +58,6 @@ pub struct UiNotifier {
     tray: Mutex<Option<TrayIcon<Wry>>>,
     /// 0 unknown, 1 off, 2 on: the tray icon is only swapped on a change.
     tray_state: AtomicU8,
-    hud_hwnd: AtomicIsize,
-    hud_seq: Arc<AtomicU64>,
 }
 
 impl UiNotifier {
@@ -50,8 +68,6 @@ impl UiNotifier {
             tray_check: Mutex::new(None),
             tray: Mutex::new(None),
             tray_state: AtomicU8::new(0),
-            hud_hwnd: AtomicIsize::new(0),
-            hud_seq: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -63,10 +79,6 @@ impl UiNotifier {
         *self.tray.lock() = Some(tray);
         *self.tray_check.lock() = Some(check);
         self.show_armed(armed);
-    }
-
-    pub fn set_hud_hwnd(&self, hwnd: isize) {
-        self.hud_hwnd.store(hwnd, Ordering::Relaxed);
     }
 
     fn show_armed(&self, armed: bool) {
@@ -107,23 +119,8 @@ impl UiNotifier {
         if !(p.hud || preview) {
             return;
         }
-        let _ = self.app.emit_to("hud", "hud", hud);
         #[cfg(windows)]
-        {
-            let hwnd = self.hud_hwnd.load(Ordering::Relaxed);
-            if hwnd == 0 {
-                return;
-            }
-            crate::shell::show_overlay(hwnd as _, p.pos);
-            let seq = self.hud_seq.fetch_add(1, Ordering::SeqCst) + 1;
-            let counter = self.hud_seq.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(1700));
-                if counter.load(Ordering::SeqCst) == seq {
-                    crate::shell::hide_overlay(hwnd as _);
-                }
-            });
-        }
+        crate::hud::show(crate::hud::Notice { text: hud.text.clone(), on: hud.on, pos: p.pos, accent: p.accent });
     }
 }
 

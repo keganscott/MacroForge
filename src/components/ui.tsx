@@ -147,7 +147,7 @@ export function SampleBadge() {
 
 /** A lime dot that pulses: something is running right now. */
 export function LiveDot({ className }: { className?: string }) {
-  return <span aria-hidden className={cx("inline-block size-2 rounded-full bg-lime animate-live", className)} />;
+  return <span aria-hidden className={cx("live-dot inline-block size-2 rounded-full bg-lime", className)} />;
 }
 
 // ------------------------------------------------------------------ Keycap --

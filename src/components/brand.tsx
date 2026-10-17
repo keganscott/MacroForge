@@ -61,24 +61,29 @@ const LANES = [
  * analyser. Scrolls while `live`; flat grey while off. Decorative.
  */
 export function SignalTrace({ live, className }: { live: boolean; className?: string }) {
+  // Two copies side by side in a layer twice as wide; the layer slides left
+  // by half and repeats. Moving a whole layer is composited by the GPU; the
+  // SVG itself is drawn once.
   return (
-    <svg aria-hidden viewBox="0 0 600 96" preserveAspectRatio="none" className={cx("overflow-hidden", className)}>
-      <g className={live ? "animate-trace" : undefined} style={{ transformBox: "fill-box" }}>
-        {LANES.map((l, i) =>
-          [0, 600].map((offset) => (
-            <path
-              key={`${i}-${offset}`}
-              d={live ? lanePath(l.ps, l.y, 16, offset) : `M ${offset} ${l.y} H ${offset + 600}`}
-              fill="none"
-              strokeWidth={live ? 1.6 : 1}
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-              className={live ? (l.lime ? "stroke-lime" : "stroke-violet") : "stroke-line-strong"}
-              opacity={live ? (l.lime ? 0.9 : 0.75) : 1}
-            />
-          )),
-        )}
-      </g>
-    </svg>
+    <div aria-hidden className={cx("overflow-hidden", className)}>
+      <div className={cx("flex h-full w-[200%]", live && "animate-trace")}>
+        {[0, 1].map((k) => (
+          <svg key={k} viewBox="0 0 600 96" preserveAspectRatio="none" className="h-full w-1/2 shrink-0">
+            {LANES.map((l, i) => (
+              <path
+                key={i}
+                d={live ? lanePath(l.ps, l.y, 16, 0) : `M 0 ${l.y} H 600`}
+                fill="none"
+                strokeWidth={live ? 1.6 : 1}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+                className={live ? (l.lime ? "stroke-lime" : "stroke-violet") : "stroke-line-strong"}
+                opacity={live ? (l.lime ? 0.9 : 0.75) : 1}
+              />
+            ))}
+          </svg>
+        ))}
+      </div>
+    </div>
   );
 }

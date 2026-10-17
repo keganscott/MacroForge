@@ -73,7 +73,7 @@ export function SettingsView() {
                 ]}
               />
               <p className="mt-3 text-xs text-ink-muted">
-                Precise waits on a high-resolution timer, then spins for the last fraction of a millisecond. Efficient uses the timer alone. Compare both on this PC in Performance.
+                Precise waits on a high-resolution timer, then spins for the last 0.8 ms: presses within a few µs, at about 2–3 % of one CPU core while a macro or rapid fire is running (none when idle). Efficient uses the timer alone: about 0 % CPU, presses up to ~0.6 ms late. Compare both on this PC in Performance.
               </p>
             </Card>
           </section>

@@ -446,15 +446,20 @@ struct Core {
 
 impl Core {
     fn run(mut self, rx: Receiver<Cmd>, hook_rx: Receiver<HookMsg>) {
+        // The engine sleeps until there is input or a command. The 50 ms
+        // tick that batches input-monitor events only exists while the
+        // monitor is on; otherwise an idle engine never wakes.
         let tick = crossbeam_channel::tick(Duration::from_millis(50));
+        let never = crossbeam_channel::never();
         loop {
+            let ticker = if self.monitor { &tick } else { &never };
             select! {
                 recv(hook_rx) -> m => if let Ok(m) = m { self.on_hook(m) },
                 recv(rx) -> c => match c {
                     Ok(Cmd::Shutdown) | Err(_) => break,
                     Ok(c) => self.on_cmd(c),
                 },
-                recv(tick) -> _ => self.flush_monitor(),
+                recv(ticker) -> _ => self.flush_monitor(),
             }
         }
         self.stop_everything();
@@ -604,6 +609,8 @@ impl Core {
     fn set_armed(&mut self, armed: bool, from_hotkey: bool) {
         self.armed = armed;
         self.shared.armed.store(armed, Ordering::SeqCst);
+        // Off: no mouse binding can fire, so the mouse hook comes out.
+        self.hook.refresh();
         if !armed {
             self.stop_everything();
         }

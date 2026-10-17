@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 
 import { Shell, type NavTarget, type ViewId } from "./components/Shell";
 import { Callout, Button } from "./components/ui";
+import { useActive } from "./lib/active";
 import { boot, dismissWarning, useStore } from "./store";
 import { HomeView } from "./views/Home";
 import { ToolsView } from "./views/Tools";
@@ -23,6 +24,13 @@ export function App() {
   useEffect(() => {
     boot().catch((e) => setError(String(e)));
   }, []);
+
+  // Nothing animates while MacroForge is in the background.
+  const active = useActive();
+  useEffect(() => {
+    if (active) delete document.documentElement.dataset.idle;
+    else document.documentElement.dataset.idle = "1";
+  }, [active]);
 
   useEffect(() => {
     if (accent === "signal") delete document.documentElement.dataset.accent;

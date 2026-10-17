@@ -2,6 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+#[cfg(windows)]
+mod hud;
 mod notify;
 #[cfg(windows)]
 mod shell;
@@ -23,8 +25,20 @@ pub struct AppState {
     pub notifier: Arc<notify::UiNotifier>,
 }
 
+/// Show the main window, building it first if it was released to the tray.
 fn show_main(app: &tauri::AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
+    let w = match app.get_webview_window("main") {
+        Some(w) => Some(w),
+        None => app
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|c| c.label == "main")
+            .and_then(|cfg| tauri::WebviewWindowBuilder::from_config(app, cfg).ok())
+            .and_then(|b| b.build().ok()),
+    };
+    if let Some(w) = w {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
@@ -40,7 +54,11 @@ fn main() {
     };
 
     let dir = store::default_dir();
-    let loaded = store::load(&dir);
+    let mut loaded = store::load(&dir);
+    // A tray hand-off (below) passes the on / off state along.
+    if let Some(a) = args.iter().find_map(|a| a.strip_prefix("--armed=")) {
+        loaded.data.settings.armed_on_launch = a == "1";
+    }
 
     let app = tauri::Builder::default()
         .setup(move |app| {
@@ -92,19 +110,16 @@ fn main() {
                 warning: Mutex::new(loaded.warning.clone()),
                 notifier: notifier.clone(),
             });
-            for cfg in app.config().app.windows.clone() {
-                tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?.build()?;
-            }
-
+            // The window is built only when it is shown (create: false in
+            // the config), so starting in the tray costs no browser at all.
             #[cfg(windows)]
-            if let Some(hud) = app.get_webview_window("hud") {
-                let _ = hud.set_ignore_cursor_events(true);
-                if let Ok(h) = hud.hwnd() {
-                    shell::make_overlay(h.0 as _);
-                    notifier.set_hud_hwnd(h.0 as isize);
-                }
+            {
+                let h = handle.clone();
+                shell::wait_for_open(move || {
+                    let h2 = h.clone();
+                    let _ = h.run_on_main_thread(move || show_main(&h2));
+                });
             }
-
             if !start_hidden {
                 show_main(&handle);
             }
@@ -114,13 +129,31 @@ fn main() {
             if window.label() != "main" {
                 return;
             }
+            // Closing to the tray hands over to a fresh tray-only copy of
+            // MacroForge and exits. WebView2 keeps its browser, GPU and
+            // renderer processes for the life of the process that opened a
+            // window (~200 MB measured, tools/measure.ps1), while a copy that
+            // never opens one is a single ~3 MB process. The hand-off takes
+            // about half a second; on / off carries over. If it cannot start,
+            // the window is just released.
             if let WindowEvent::CloseRequested { api, .. } = event {
+                let app = window.app_handle();
                 let st = window.state::<AppState>();
-                if st.data.lock().settings.close_to_tray {
-                    api.prevent_close();
-                    let _ = window.hide();
-                } else {
-                    window.app_handle().exit(0);
+                if !st.data.lock().settings.close_to_tray {
+                    app.exit(0);
+                    return;
+                }
+                if cfg!(not(debug_assertions)) {
+                    let armed = st.engine.status().armed;
+                    if let Ok(exe) = std::env::current_exe() {
+                        let spawned = std::process::Command::new(exe)
+                            .args(["--minimized", "--relaunch", if armed { "--armed=1" } else { "--armed=0" }])
+                            .spawn();
+                        if spawned.is_ok() {
+                            api.prevent_close();
+                            app.exit(0);
+                        }
+                    }
                 }
             }
         })
@@ -151,6 +184,16 @@ fn main() {
         .expect("error while building MacroForge");
 
     app.run(|app, event| {
+        // The last window closing is not quitting when MacroForge lives in
+        // the tray; Quit (an explicit exit code) still quits.
+        if let RunEvent::ExitRequested { code: None, api, .. } = &event {
+            if let Some(st) = app.try_state::<AppState>() {
+                if st.data.lock().settings.close_to_tray {
+                    api.prevent_exit();
+                    return;
+                }
+            }
+        }
         if let RunEvent::Exit = event {
             // Let go of every key and remove the hooks before the process ends.
             if let Some(st) = app.try_state::<AppState>() {

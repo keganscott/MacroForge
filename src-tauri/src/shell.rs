@@ -1,20 +1,17 @@
-//! Windows bits the app shell needs: single instance, the HUD overlay
-//! window, sound cues, relaunching as administrator.
+//! Windows bits the app shell needs: single instance, sound cues,
+//! relaunching as administrator. (The on-screen notice is hud.rs.)
 
 use std::sync::OnceLock;
 
-use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, HWND, RECT};
+use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE};
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
-use windows_sys::Win32::System::Threading::CreateMutexW;
-use windows_sys::Win32::UI::Shell::ShellExecuteW;
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect, SetForegroundWindow, SetWindowLongPtrW,
-    SetWindowPos, ShowWindow, ShowWindowAsync, GWL_EXSTYLE, HWND_TOPMOST, SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE,
-    SWP_NOSIZE, SW_HIDE, SW_RESTORE, SW_SHOWNOACTIVATE, SW_SHOWNORMAL, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_EX_TRANSPARENT,
+use windows_sys::Win32::System::Threading::{
+    CreateEventW, CreateMutexW, OpenEventW, SetEvent, WaitForSingleObject, EVENT_MODIFY_STATE, INFINITE,
 };
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
+use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOWNORMAL};
 
-use macroforge_engine::model::{HudPosition, SoundStyle};
+use macroforge_engine::model::SoundStyle;
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -57,61 +54,42 @@ pub fn single_instance(wait: bool) -> Option<SingleInstance> {
         }
         std::thread::sleep(std::time::Duration::from_millis(150));
     }
-    // SAFETY: finding and restoring the other copy's window by its title.
+    // Ask the running copy to open its window. It may be tray-only, with no
+    // window to find, so this is a named event it waits on (wait_for_open).
+    // SAFETY: opening and signalling a named event; handle closed after.
     unsafe {
-        let hwnd = FindWindowW(std::ptr::null(), wide("MacroForge").as_ptr());
-        if !hwnd.is_null() {
-            ShowWindow(hwnd, SW_RESTORE);
-            SetForegroundWindow(hwnd);
+        let ev = OpenEventW(EVENT_MODIFY_STATE, 0, wide(OPEN_EVENT).as_ptr());
+        if !ev.is_null() {
+            SetEvent(ev);
+            CloseHandle(ev);
+        } else {
+            let hwnd = FindWindowW(std::ptr::null(), wide("MacroForge").as_ptr());
+            if !hwnd.is_null() {
+                ShowWindow(hwnd, SW_RESTORE);
+                SetForegroundWindow(hwnd);
+            }
         }
     }
     None
 }
 
-/// Make the HUD a click-through overlay that never takes focus (so showing
-/// it can never pull a game out of the foreground) and stays off Alt+Tab.
-pub fn make_overlay(hwnd: HWND) {
-    // SAFETY: adjusting extended styles of our own window.
-    unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, (ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT) as isize);
-    }
-}
+const OPEN_EVENT: &str = r"Local\MacroForge.Open";
 
-/// Show the HUD on the monitor of the app in front, without activating it.
-/// Async calls, so the engine thread never waits on the UI thread.
-pub fn show_overlay(hwnd: HWND, pos: HudPosition) {
-    use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY};
-    // SAFETY: queries plus async positioning of our own window.
-    unsafe {
-        let mut mi: MONITORINFO = std::mem::zeroed();
-        mi.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
-        let mon = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY);
-        if GetMonitorInfoW(mon, &mut mi) == 0 {
-            return;
+/// Call `open` whenever a second launch asks this copy to show its window.
+pub fn wait_for_open(open: impl Fn() + Send + 'static) {
+    // SAFETY: an auto-reset named event owned by this process for its lifetime.
+    let ev = unsafe { CreateEventW(std::ptr::null(), 0, 0, wide(OPEN_EVENT).as_ptr()) };
+    if ev.is_null() {
+        return;
+    }
+    let ev = ev as usize;
+    let _ = std::thread::Builder::new().name("macroforge-open".into()).spawn(move || loop {
+        // SAFETY: the handle stays open for the life of the process.
+        if unsafe { WaitForSingleObject(ev as HANDLE, INFINITE) } != 0 {
+            break;
         }
-        let mut r: RECT = std::mem::zeroed();
-        GetWindowRect(hwnd, &mut r);
-        let (w, h) = (r.right - r.left, r.bottom - r.top);
-        let wa = mi.rcWork;
-        let margin = 24;
-        let x = match pos {
-            HudPosition::TopLeft | HudPosition::BottomLeft => wa.left + margin,
-            HudPosition::TopCenter => wa.left + (wa.right - wa.left - w) / 2,
-            HudPosition::TopRight | HudPosition::BottomRight => wa.right - w - margin,
-        };
-        let y = match pos {
-            HudPosition::BottomLeft | HudPosition::BottomRight => wa.bottom - h - margin,
-            _ => wa.top + margin,
-        };
-        SetWindowPos(hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
-        ShowWindowAsync(hwnd, SW_SHOWNOACTIVATE);
-    }
-}
-
-pub fn hide_overlay(hwnd: HWND) {
-    // SAFETY: async hide of our own window.
-    unsafe { ShowWindowAsync(hwnd, SW_HIDE) };
+        open();
+    });
 }
 
 // ------------------------------------------------------------- sounds --
