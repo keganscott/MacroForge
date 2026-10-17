@@ -1,11 +1,10 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, Gauge, Keyboard, ListVideo, Lock, MousePointerClick, ShieldAlert, Square, Wand2 } from "lucide-react";
 
-import { Facets } from "../components/brand";
+import { SignalTrace } from "../components/brand";
 import { MasterSwitch, useNavigate } from "../components/Shell";
 import { Button, Callout, Card, cx, Eyebrow, Keycap, LiveDot, SectionTitle, StatusBadge } from "../components/ui";
 import { actionSummary, bindingTitle, fmtUs } from "../lib/describe";
-import { comboName } from "../lib/keys";
 import type { Binding, Stats } from "../lib/types";
 import { backend, useStore } from "../store";
 
@@ -34,7 +33,9 @@ export function HomeView() {
     : status.liveBindings === 0
       ? total === 0
         ? "Ready when you are."
-        : "Nothing applies to this app."
+        : status.pausedOwnWindow
+          ? `${total} binding${total === 1 ? "" : "s"} ready.`
+          : "Nothing applies to this app."
       : null;
 
   return (
@@ -50,7 +51,13 @@ export function HomeView() {
             )}
           </h1>
           <p className="mt-2 text-sm text-ink-muted">
-            {active.map((p) => p.name).join(" + ") || "No profile"} · in front: <span className="font-mono">{status.foreground ?? "desktop"}</span>
+            {status.pausedOwnWindow ? (
+              "Paused while MacroForge is in front. Switch to a game or app and they apply there."
+            ) : (
+              <>
+                {active.map((p) => p.name).join(" + ") || "No profile"} · in front: <span className="font-mono">{status.foreground ?? "desktop"}</span>
+              </>
+            )}
           </p>
         </div>
       </div>
@@ -73,33 +80,46 @@ export function HomeView() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
         {/* ------------------------------------------------ hero */}
-        <section className={cx("relative overflow-hidden rounded-2xl p-7", status.armed ? "bg-violet" : "border border-line bg-surface-1")}>
-          {status.armed && <Facets className="pointer-events-none absolute inset-y-0 right-0 h-full w-2/3" />}
+        <section
+          className={cx(
+            "relative overflow-hidden rounded-2xl border bg-surface-1 p-7 pb-28 texture-grid",
+            status.armed ? "border-violet/50" : "border-line",
+          )}
+          style={status.armed ? { boxShadow: "0 0 70px -28px var(--color-violet), inset 0 1px 0 rgb(255 255 255 / 0.04)" } : undefined}
+        >
+          {status.armed && (
+            <div aria-hidden className="pointer-events-none absolute -top-24 -left-16 size-72 rounded-full opacity-25 blur-3xl" style={{ background: "var(--color-violet)" }} />
+          )}
+          <SignalTrace live={status.armed && !status.pausedOwnWindow} className="pointer-events-none absolute inset-x-0 bottom-0 h-24 w-full" />
           <div className="relative">
-            <Eyebrow className={status.armed ? "text-white/80" : ""}>{status.armed ? "Armed" : "Paused"}</Eyebrow>
-            <h2 className="mt-2 max-w-md text-2xl font-extrabold tracking-tight text-white">
+            <p className={cx("flex items-center gap-2 text-[10.5px] font-bold tracking-[0.14em] uppercase", status.armed ? "text-violet" : "text-ink-faint")}>
+              {status.armed ? <LiveDot /> : <span aria-hidden className="size-2 rounded-full bg-ink-faint" />}
+              {!status.armed ? "Paused" : status.pausedOwnWindow ? "On · paused in this window" : "Listening"}
+            </p>
+            <h2 className="mt-3 max-w-lg text-2xl font-extrabold tracking-tight">
               {status.armed
                 ? status.pausedOwnWindow
-                  ? "On. Bindings pause while this window is in front, so you can type here."
+                  ? "Switch to your game and your bindings take over."
                   : "Your bindings are listening."
                 : "Nothing will run until you switch bindings on."}
             </h2>
-            <p className={cx("mt-2 max-w-md text-sm", status.armed ? "text-white/80" : "text-ink-muted")}>
+            <p className="mt-2 flex max-w-lg flex-wrap items-center gap-x-2 gap-y-1.5 text-sm text-ink-muted">
               {s.masterHotkey.input ? (
                 <>
-                  <span className="font-bold">{comboName(s.masterHotkey.input, s.masterHotkey.mods)}</span> switches them on or off from inside any game.{" "}
+                  <Keycap input={s.masterHotkey.input} mods={s.masterHotkey.mods} /> on / off
                 </>
               ) : null}
               {s.panicHotkey.input ? (
                 <>
-                  <span className="font-bold">{comboName(s.panicHotkey.input, s.panicHotkey.mods)}</span> stops everything instantly.
+                  <span className="mx-1 text-ink-faint">·</span>
+                  <Keycap input={s.panicHotkey.input} mods={s.panicHotkey.mods} /> stops everything
                 </>
               ) : null}
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <MasterSwitch large />
               {total === 0 && (
-                <Button variant={status.armed ? "go" : "primary"} icon={<Wand2 aria-hidden className="size-4" />} onClick={() => navigate({ view: "tools" })}>
+                <Button variant="primary" icon={<Wand2 aria-hidden className="size-4" />} onClick={() => navigate({ view: "tools" })}>
                   Set up a quick tool
                 </Button>
               )}
@@ -108,7 +128,7 @@ export function HomeView() {
         </section>
 
         {/* ------------------------------------------------ running */}
-        <Card className="flex flex-col texture-lines">
+        <Card className="flex flex-col">
           <div className="flex items-center justify-between">
             <Eyebrow>Running now</Eyebrow>
             {status.running.length + status.locks.length > 0 && (
@@ -179,6 +199,7 @@ export function HomeView() {
           </Card>
         </div>
         <div>
+          <ActivityCard />
           <SectionTitle>Start here</SectionTitle>
           <div className="flex flex-col gap-2">
             <Shortcut icon={<MousePointerClick aria-hidden className="size-4" />} title="Auto-clicker, turbo, remap" hint="Quick tools: two clicks each" onClick={() => navigate({ view: "tools" })} />
@@ -190,6 +211,43 @@ export function HomeView() {
       </div>
     </>
   );
+}
+
+function ActivityCard() {
+  const activity = useStore((s) => s.activity);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 10_000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="mb-6">
+      <SectionTitle>Activity</SectionTitle>
+      <Card className="p-2">
+        {activity.length === 0 ? (
+          <p className="p-3 text-sm text-ink-muted">Toggles, on / off and game profile switches show here as they happen.</p>
+        ) : (
+          <ul>
+            {activity.slice(0, 7).map((a) => (
+              <li key={a.id} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm">
+                <span aria-hidden className={cx("size-2 shrink-0 rounded-full", a.on ? "bg-lime" : "bg-ink-faint")} />
+                <span className="flex-1 truncate font-semibold">{a.text}</span>
+                <span className="text-xs text-ink-faint tabular-nums">{ago(a.at)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function ago(at: number): string {
+  const s = Math.round((Date.now() - at) / 1000);
+  if (s < 10) return "just now";
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
@@ -205,7 +263,7 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
 function Shortcut({ icon, title, hint, onClick }: { icon: React.ReactNode; title: string; hint: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className="group flex items-center gap-3 rounded-xl border border-line bg-surface-1 p-3 text-left hover:border-violet">
-      <span className="grid size-9 place-items-center rounded-lg bg-surface-3 text-violet-soft group-hover:bg-violet group-hover:text-white">{icon}</span>
+      <span className="grid size-9 place-items-center rounded-lg bg-surface-3 text-violet-soft group-hover:bg-violet group-hover:text-on-accent">{icon}</span>
       <span className="flex-1">
         <span className="block text-sm font-bold">{title}</span>
         <span className="text-xs text-ink-muted">{hint}</span>

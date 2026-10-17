@@ -136,7 +136,7 @@ export function KeyField({
                 onClick={() => onChange({ ...value, mods: value.mods ^ m.bit })}
                 className={cx(
                   "h-7 rounded-md border px-2 text-xs font-bold",
-                  on ? "border-violet bg-violet text-white" : "border-line text-ink-muted hover:text-ink",
+                  on ? "border-violet bg-violet text-on-accent" : "border-line text-ink-muted hover:text-ink",
                 )}
               >
                 {m.label}

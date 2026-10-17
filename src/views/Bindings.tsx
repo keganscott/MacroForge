@@ -81,7 +81,7 @@ export function BindingsView({ focus }: { focus?: string }) {
                   on ? "border-violet bg-violet/10" : "border-line bg-surface-1 hover:border-line-strong",
                 )}
               >
-                <span className={cx("mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg", on ? "bg-violet text-white" : "bg-surface-3 text-ink-muted")}>
+                <span className={cx("mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg", on ? "bg-violet text-on-accent" : "bg-surface-3 text-ink-muted")}>
                   {p.apps.length ? <Gamepad2 aria-hidden className="size-4" /> : <Globe aria-hidden className="size-4" />}
                 </span>
                 <span className="min-w-0 flex-1">
@@ -316,7 +316,7 @@ function ProfileDialog({ profile, onClose, onCreated }: { profile: Profile | nul
           <div className="flex min-h-11 flex-wrap items-center gap-1.5 rounded-xl border border-line-strong bg-surface-2 p-2">
             {apps.length === 0 && <span className="px-1 text-xs text-ink-faint">{isGlobal ? "Everywhere" : "Pick a game below"}</span>}
             {apps.map((a) => (
-              <span key={a} className="inline-flex items-center gap-1 rounded-md bg-violet px-2 py-1 font-mono text-xs font-bold text-white">
+              <span key={a} className="inline-flex items-center gap-1 rounded-md bg-violet px-2 py-1 font-mono text-xs font-bold text-on-accent">
                 {a}
                 <button type="button" aria-label={`Remove ${a}`} onClick={() => setApps(apps.filter((x) => x !== a))}>
                   <X aria-hidden className="size-3.5" />

@@ -425,10 +425,10 @@ impl Core {
         self.notifier.status(&self.status());
     }
 
+    /// Something switched on or off: the notifier decides on notice, sound
+    /// and the activity list from the user's settings.
     fn hud(&self, text: impl Into<String>, on: bool) {
-        if self.data.settings.hud || self.data.settings.sounds {
-            self.notifier.hud(&Hud { text: text.into(), on });
-        }
+        self.notifier.hud(&Hud { text: text.into(), on });
     }
 
     fn on_cmd(&mut self, c: Cmd) {
@@ -504,9 +504,8 @@ impl Core {
         if !armed {
             self.stop_everything();
         }
-        if from_hotkey || self.data.settings.hud {
-            self.hud(if armed { "MacroForge on" } else { "MacroForge off" }, armed);
-        }
+        let _ = from_hotkey;
+        self.hud(if armed { "Bindings on" } else { "Bindings off" }, armed);
         self.publish();
     }
 

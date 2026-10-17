@@ -65,7 +65,7 @@ function Tool({ icon, title, hint, children, footer }: { icon: ReactNode; title:
   return (
     <Card className="flex flex-col">
       <div className="mb-4 flex items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet text-white">{icon}</span>
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet text-on-accent">{icon}</span>
         <div>
           <h2 className="text-base font-extrabold tracking-tight">{title}</h2>
           <p className="text-xs text-ink-muted">{hint}</p>

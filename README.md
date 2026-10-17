@@ -1,9 +1,11 @@
 # MacroForge
 
 Fast, precise keyboard and mouse macros for Windows, for games that allow
-them. It is the third app in the family after PeakTweaks and Crosshair Forge,
-and uses the same design language: black surfaces, violet for actions, lime
-for "on", a sidebar shell, and rounded bordered cards.
+them. It is the third app in the family after PeakTweaks and Crosshair Forge.
+It shares the family's DNA (true black, lime for "on", the sidebar shell, the
+type and the two-weight wordmark) but has its own signature: Signal cyan,
+keycaps, and key presses drawn as signal traces. See
+[`docs/DESIGN.md`](docs/DESIGN.md).
 
 Built like PeakTweaks: a Tauri 2 shell, a Rust engine crate, and a
 React/TypeScript/Tailwind UI.
@@ -26,7 +28,8 @@ React/TypeScript/Tailwind UI.
 - **Macros.** Steps for key/click (with hold time), hold down, release,
   wait (± random), type text, scroll, relative mouse move (optionally smooth
   over a duration), and cursor to (x, y). You can drag to reorder, duplicate,
-  and test play with a 3-2-1 countdown.
+  and test play with a 3-2-1 countdown. A **timeline** draws the macro as
+  signal lanes, one per key, and a playhead follows test play.
 - **Recorder.** Records keys and buttons in other apps (not MacroForge's own
   window), with timing as performed, a fixed gap, or no waits. It can also
   record mouse movement.
@@ -36,9 +39,13 @@ React/TypeScript/Tailwind UI.
 - **Always in control.** Scroll Lock turns all bindings on or off; Pause stops
   everything and lets go of every held key (both are rebindable). Bindings
   pause while MacroForge's own window is in front, so you can type in it.
-- **On-screen notice and sounds.** A small line ("Auto-clicker on") and a tone
-  when a toggle changes. It is a click-through window that never takes
-  focus.
+- **On-screen notice and sounds.** A small notice ("Auto-clicker · ON") when a
+  toggle changes. It is a click-through window that never takes focus. The
+  sound cues are soft and quiet: a key-switch click, a glass chime or a pop,
+  30 % volume by default, adjustable, with a test button.
+- **Tray and activity.** The tray icon lights up cyan while bindings are on
+  and turns grey when they're off. Home lists recent activity: toggles,
+  on/off, Stop all, and game profiles switching in and out.
 - **Share codes.** Copy a profile as an `MF1-…` code; Import adds it as a new
   profile and never overwrites anything.
 - **Performance, measured.** A timing test on your PC (both timing modes),

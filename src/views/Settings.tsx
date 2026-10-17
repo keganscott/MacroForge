@@ -1,11 +1,12 @@
-import { FolderOpen, MonitorSmartphone, ShieldCheck } from "lucide-react";
+import { FolderOpen, MonitorSmartphone, Play, ShieldCheck, Volume1, Volume2 } from "lucide-react";
 
 import { KeyField } from "../components/KeyField";
-import { Button, Card, cx, Field, PageHeader, Segmented, SectionTitle, SwitchRow } from "../components/ui";
-import type { Accent, HudPosition } from "../lib/types";
-import { backend, setSettings, useStore } from "../store";
+import { Button, Card, cx, Field, PageHeader, Segmented, SectionTitle, Slider, SwitchRow } from "../components/ui";
+import type { Accent, HudPosition, SoundStyle } from "../lib/types";
+import { backend, flushNow, setSettings, useStore } from "../store";
 
 const ACCENTS: { id: Accent; color: string }[] = [
+  { id: "signal", color: "#22d3ee" },
   { id: "violet", color: "#7e3bed" },
   { id: "blue", color: "#2563eb" },
   { id: "teal", color: "#0d9488" },
@@ -13,6 +14,12 @@ const ACCENTS: { id: Accent; color: string }[] = [
   { id: "amber", color: "#d97706" },
   { id: "pink", color: "#db2777" },
 ];
+
+/** Save pending edits first, so the test plays the style and volume shown. */
+async function testSound(on: boolean) {
+  await flushNow();
+  await backend().testSound(on);
+}
 
 export function SettingsView() {
   const s = useStore((st) => st.data!.settings);
@@ -78,7 +85,6 @@ export function SettingsView() {
             <Card className="flex flex-col gap-4">
               <div className="divide-y divide-line">
                 <SwitchRow title="Show a notice when a toggle changes" hint="A small line over your game: “Auto-clicker on”. It never takes focus and clicks pass through it." checked={s.hud} onChange={(hud) => setSettings({ hud })} />
-                <SwitchRow title="Play a sound" hint="A short rising tone for on, falling for off." checked={s.sounds} onChange={(sounds) => setSettings({ sounds })} />
               </div>
               <Field label="Position">
                 <div className="flex flex-wrap items-center gap-3">
@@ -104,6 +110,43 @@ export function SettingsView() {
           </section>
 
           <section>
+            <SectionTitle>Sounds</SectionTitle>
+            <Card className="flex flex-col gap-4">
+              <SwitchRow title="Play a sound when something switches" hint="Quiet by design: a cue you feel more than hear." checked={s.sounds} onChange={(sounds) => setSettings({ sounds })} />
+              <div className={cx("flex flex-col gap-4", !s.sounds && "pointer-events-none opacity-40")}>
+                <Field label="Sound">
+                  <Segmented<SoundStyle>
+                    size="sm"
+                    label="Sound"
+                    value={s.soundStyle}
+                    onChange={(soundStyle) => setSettings({ soundStyle })}
+                    options={[
+                      { value: "click", label: "Soft click" },
+                      { value: "chime", label: "Glass chime" },
+                      { value: "pop", label: "Pop" },
+                    ]}
+                  />
+                </Field>
+                <Field label={`Volume · ${s.soundVolume}%`}>
+                  <div className="flex items-center gap-3">
+                    <Volume1 aria-hidden className="size-4 shrink-0 text-ink-faint" />
+                    <Slider label="Volume" min={5} max={100} step={5} value={s.soundVolume} onChange={(soundVolume) => setSettings({ soundVolume })} />
+                    <Volume2 aria-hidden className="size-4 shrink-0 text-ink-faint" />
+                  </div>
+                </Field>
+                <div className="flex gap-2">
+                  <Button size="sm" icon={<Play aria-hidden className="size-3.5" />} onClick={() => void testSound(true)}>
+                    Hear "on"
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => void testSound(false)}>
+                    Hear "off"
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </section>
+
+          <section>
             <SectionTitle>Appearance</SectionTitle>
             <Card>
               <p className="mb-3 text-xs font-bold">Accent colour</p>
@@ -120,7 +163,7 @@ export function SettingsView() {
                   />
                 ))}
               </div>
-              <p className="mt-3 text-xs text-ink-muted">The same six as PeakTweaks and Crosshair Forge. Lime always means on.</p>
+              <p className="mt-3 text-xs text-ink-muted">Signal cyan is MacroForge’s own; the others are the family colours shared with PeakTweaks and Crosshair Forge. Lime always means on.</p>
             </Card>
           </section>
 

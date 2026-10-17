@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::input::{self, Input, MOD_ALL};
 
-pub const DATA_VERSION: u32 = 1;
+/// 2: MacroForge's own Signal accent became the default; sound style and volume.
+pub const DATA_VERSION: u32 = 2;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -226,6 +227,9 @@ pub struct Settings {
     pub hud: bool,
     pub hud_position: HudPosition,
     pub sounds: bool,
+    pub sound_style: SoundStyle,
+    /// 0-100. Cues are quiet by design; 30 is the default.
+    pub sound_volume: u8,
     pub close_to_tray: bool,
     pub start_minimized: bool,
     pub start_with_windows: bool,
@@ -247,6 +251,17 @@ pub enum HudPosition {
     BottomRight,
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum SoundStyle {
+    /// A soft mechanical key click.
+    Click,
+    /// Two gentle glass notes.
+    Chime,
+    /// A small rounded pop.
+    Pop,
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum RecordTiming {
@@ -266,10 +281,12 @@ impl Default for Settings {
             hud: true,
             hud_position: HudPosition::TopCenter,
             sounds: true,
+            sound_style: SoundStyle::Click,
+            sound_volume: 30,
             close_to_tray: true,
             start_minimized: false,
             start_with_windows: false,
-            accent: "violet".into(),
+            accent: "signal".into(),
             record_timing: RecordTiming::Real,
             record_fixed_delay_ms: 30.0,
             record_mouse_moves: false,
@@ -392,6 +409,10 @@ impl Data {
     /// items were dropped, so the caller can log it.
     pub fn sanitize(&mut self) -> usize {
         let mut dropped = 0;
+        if self.version < 2 && self.settings.accent == "violet" {
+            // Version 1 defaulted to the family violet; MacroForge now has its own.
+            self.settings.accent = "signal".into();
+        }
         self.version = DATA_VERSION;
 
         let mut seen = std::collections::HashSet::new();
@@ -451,8 +472,9 @@ impl Data {
         s.master_hotkey.sanitize();
         s.panic_hotkey.sanitize();
         s.record_fixed_delay_ms = clamp_f(s.record_fixed_delay_ms, 0.0, 10_000.0, 30.0);
-        if !["violet", "blue", "teal", "green", "amber", "pink"].contains(&s.accent.as_str()) {
-            s.accent = "violet".into();
+        s.sound_volume = s.sound_volume.min(100);
+        if !["signal", "violet", "blue", "teal", "green", "amber", "pink"].contains(&s.accent.as_str()) {
+            s.accent = "signal".into();
         }
         dropped
     }
@@ -508,6 +530,17 @@ mod tests {
         assert_eq!(b.action, Action::Rapid { output: 256, rate: 10.0, hold_ms: MAX_HOLD_MS, jitter_pct: 50.0 });
         assert_eq!(d.profiles[0].apps, vec!["cs2.exe"]);
         assert_eq!(d.macros[0].steps, vec![Step::Delay { ms: 0.0, jitter_ms: 0.0 }]);
+    }
+
+    #[test]
+    fn version_1_moves_to_the_signal_accent_once() {
+        let mut d: Data = serde_json::from_str(r#"{"version":1,"settings":{"accent":"violet"}}"#).unwrap();
+        d.sanitize();
+        assert_eq!(d.settings.accent, "signal");
+        assert_eq!(d.settings.sound_volume, 30);
+        d.settings.accent = "violet".into();
+        d.sanitize();
+        assert_eq!(d.settings.accent, "violet", "a later choice of violet is kept");
     }
 
     #[test]

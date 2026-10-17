@@ -24,10 +24,13 @@ export interface Backend {
   relaunchAdmin(): Promise<boolean>;
   openDataDir(): Promise<void>;
   previewHud(): Promise<void>;
+  testSound(on: boolean): Promise<void>;
   onStatus(cb: (s: Status) => void): () => void;
   onMonitor(cb: (e: MonitorEvent[]) => void): () => void;
   onRecorded(cb: (n: number) => void): () => void;
   onHud(cb: (h: Hud) => void): () => void;
+  /** Toggles, master on/off and Stop all, for the activity list. */
+  onActivity(cb: (h: Hud) => void): () => void;
 }
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -65,10 +68,12 @@ async function tauriBackend(): Promise<Backend> {
     relaunchAdmin: () => invoke("relaunch_admin"),
     openDataDir: () => invoke("open_data_dir"),
     previewHud: () => invoke("preview_hud"),
+    testSound: (on) => invoke("test_sound", { on }),
     onStatus: (cb) => sub("status", cb),
     onMonitor: (cb) => sub("monitor", cb),
     onRecorded: (cb) => sub("recorded", cb),
     onHud: (cb) => sub("hud", cb),
+    onActivity: (cb) => sub("activity", cb),
   };
 }
 

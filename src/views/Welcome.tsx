@@ -35,7 +35,7 @@ export function Welcome() {
 function Item({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3">
-      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-violet text-white">{icon}</span>
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-violet text-on-accent">{icon}</span>
       <div>
         <p className="text-sm font-bold">{title}</p>
         <p className="text-sm text-ink-muted">{children}</p>

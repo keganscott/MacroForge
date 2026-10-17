@@ -64,7 +64,8 @@ export interface Hotkey {
 export type HudPosition = "topLeft" | "topCenter" | "topRight" | "bottomLeft" | "bottomRight";
 export type RecordTiming = "real" | "fixed" | "none";
 export type TimingMode = "efficient" | "precise";
-export type Accent = "violet" | "blue" | "teal" | "green" | "amber" | "pink";
+export type SoundStyle = "click" | "chime" | "pop";
+export type Accent = "signal" | "violet" | "blue" | "teal" | "green" | "amber" | "pink";
 
 export interface Settings {
   masterHotkey: Hotkey;
@@ -75,6 +76,8 @@ export interface Settings {
   hud: boolean;
   hudPosition: HudPosition;
   sounds: boolean;
+  soundStyle: SoundStyle;
+  soundVolume: number;
   closeToTray: boolean;
   startMinimized: boolean;
   startWithWindows: boolean;

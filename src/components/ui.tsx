@@ -14,7 +14,7 @@ export const cx = (...parts: (string | false | null | undefined)[]) => parts.fil
 type Variant = "primary" | "go" | "secondary" | "ghost" | "danger";
 
 const VARIANT: Record<Variant, string> = {
-  primary: "bg-violet text-white hover:bg-violet-strong disabled:bg-surface-3 disabled:text-ink-faint",
+  primary: "bg-violet text-on-accent hover:bg-violet-strong disabled:bg-surface-3 disabled:text-ink-faint",
   go: "bg-lime text-black hover:bg-lime-strong disabled:bg-black/30 disabled:text-white/70",
   secondary: "border border-line-strong text-ink hover:bg-surface-2 disabled:text-ink-faint",
   ghost: "text-ink-muted hover:text-ink hover:bg-surface-2 disabled:text-ink-faint",
@@ -107,7 +107,7 @@ export type Tone = "ok" | "warn" | "bad" | "info" | "neutral";
 
 const TONE: Record<Tone, { badge: string; edge: string; icon: string; Icon: typeof Info }> = {
   ok: { badge: "border-ok bg-ok text-black", edge: "border-ok/35", icon: "text-ok", Icon: CheckCircle2 },
-  warn: { badge: "border-violet bg-violet text-white", edge: "border-violet/70", icon: "text-violet-soft", Icon: AlertTriangle },
+  warn: { badge: "border-violet bg-violet text-on-accent", edge: "border-violet/70", icon: "text-violet-soft", Icon: AlertTriangle },
   bad: { badge: "border-bad/50 bg-bad/10 text-bad", edge: "border-bad/50", icon: "text-bad", Icon: OctagonX },
   info: { badge: "border-line-strong text-info", edge: "border-line-strong", icon: "text-info", Icon: Info },
   neutral: { badge: "border-line-strong text-ink-muted", edge: "border-line", icon: "text-ink-muted", Icon: CircleHelp },
@@ -310,7 +310,7 @@ export function Segmented<T extends string>({
           className={cx(
             "inline-flex items-center gap-1.5 rounded-md font-bold transition-colors",
             size === "sm" ? "h-7 px-2.5 text-xs" : "h-8 px-3.5 text-sm",
-            o.value === value ? "bg-violet text-white" : "text-ink-muted hover:text-ink",
+            o.value === value ? "bg-violet text-on-accent" : "text-ink-muted hover:text-ink",
           )}
         >
           {o.label}

@@ -71,7 +71,7 @@ export function Shell({ view, onNavigate, children }: { view: ViewId; onNavigate
                           <span
                             className={cx(
                               "ml-auto grid h-5 min-w-5 place-items-center rounded-md px-1.5 text-[11px] font-bold",
-                              id === "home" ? "bg-lime text-black" : active ? "bg-violet text-white" : "bg-surface-3 text-ink-muted",
+                              id === "home" ? "bg-lime text-black" : active ? "bg-violet text-on-accent" : "bg-surface-3 text-ink-muted",
                             )}
                           >
                             {n}
@@ -108,7 +108,7 @@ function EngineCard() {
   if (!status || !settings) return null;
   const on = status.armed;
   return (
-    <div className={cx("rounded-xl border p-3.5 texture-lines", on ? "border-lime/40" : "border-line")}>
+    <div className={cx("rounded-xl border p-3.5 texture-grid", on ? "border-lime/40" : "border-line")}>
       <p className="flex items-center gap-2 text-sm font-bold">
         {on ? <LiveDot /> : <span aria-hidden className="size-2 rounded-full bg-ink-faint" />}
         {on ? (status.pausedOwnWindow ? "On · paused here" : "Bindings on") : "Bindings off"}

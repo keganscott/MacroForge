@@ -21,6 +21,7 @@ const COMMANDS: &[&str] = &[
     "relaunch_admin",
     "open_data_dir",
     "preview_hud",
+    "test_sound",
 ];
 
 fn main() {

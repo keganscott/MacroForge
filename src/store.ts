@@ -18,6 +18,15 @@ export interface State {
   saveError: string | null;
   loadWarning: string | null;
   toast: { id: number; text: string; undo?: () => void } | null;
+  /** Newest first: toggles, on/off, Stop all, profile switches. */
+  activity: Activity[];
+}
+
+export interface Activity {
+  id: number;
+  text: string;
+  on: boolean;
+  at: number;
 }
 
 let state: State = {
@@ -31,6 +40,7 @@ let state: State = {
   saveError: null,
   loadWarning: null,
   toast: null,
+  activity: [],
 };
 
 const subs = new Set<() => void>();
@@ -70,7 +80,24 @@ export async function boot() {
     version: snap.version,
     loadWarning: snap.warning,
   });
-  be.onStatus((status) => set({ status }));
+  be.onStatus((status) => {
+    // A game profile coming into or out of effect is worth a line too.
+    const before = new Set(state.status?.activeProfiles ?? []);
+    const after = new Set(status.activeProfiles);
+    for (const p of state.data?.profiles ?? []) {
+      // Alt-tabbing into MacroForge itself pauses everything; that is not news.
+      if (!state.status || status.pausedOwnWindow || state.status.pausedOwnWindow) break;
+      if (!p.apps.length || before.has(p.id) === after.has(p.id)) continue;
+      log(`${p.name} profile ${after.has(p.id) ? "active" : "inactive"}`, after.has(p.id));
+    }
+    set({ status });
+  });
+  be.onActivity((h) => log(h.text, h.on));
+}
+
+let activitySeq = 0;
+function log(text: string, on: boolean) {
+  set({ activity: [{ id: ++activitySeq, text, on, at: Date.now() }, ...state.activity].slice(0, 30) });
 }
 
 // ----------------------------------------------------------------- saving --
@@ -91,7 +118,16 @@ export function update(fn: (d: Data) => Data) {
   saveTimer = setTimeout(() => void flush(seq), 250);
 }
 
+/** Save any pending edit right away. */
+export async function flushNow() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  await flush(editSeq);
+}
+
 async function flush(seq: number) {
+  saveTimer = null;
   const d = state.data;
   if (!d || !be) return;
   set({ saving: true });

@@ -14,7 +14,7 @@ import { Welcome } from "./views/Welcome";
 
 export function App() {
   const ready = useStore((s) => s.ready);
-  const accent = useStore((s) => s.data?.settings.accent ?? "violet");
+  const accent = useStore((s) => s.data?.settings.accent ?? "signal");
   const warning = useStore((s) => s.loadWarning);
   const [error, setError] = useState<string | null>(null);
   const [nav, setNav] = useState<NavTarget>({ view: "home" });
@@ -24,7 +24,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (accent === "violet") delete document.documentElement.dataset.accent;
+    if (accent === "signal") delete document.documentElement.dataset.accent;
     else document.documentElement.dataset.accent = accent;
   }, [accent]);
 

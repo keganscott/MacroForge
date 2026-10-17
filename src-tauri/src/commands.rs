@@ -201,6 +201,11 @@ pub fn open_data_dir(st: State<AppState>) {
 }
 
 #[tauri::command]
+pub fn test_sound(st: State<AppState>, on: bool) {
+    st.notifier.test_sound(on);
+}
+
+#[tauri::command]
 pub fn preview_hud(st: State<AppState>) {
     st.notifier.show_hud(&Hud { text: "Auto-clicker on".into(), on: true }, true);
 }

@@ -6,7 +6,7 @@ import { vkFromDomCode, MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, MOUSE_X1, MOUSE_X
 import type { Data, Hud, MonitorEvent, Status, Step } from "./types";
 
 const defaults = (): Data => ({
-  version: 1,
+  version: 2,
   profiles: [
     {
       id: "global",
@@ -94,10 +94,12 @@ const defaults = (): Data => ({
     hud: true,
     hudPosition: "topCenter",
     sounds: true,
+    soundStyle: "click",
+    soundVolume: 30,
     closeToTray: true,
     startMinimized: false,
     startWithWindows: false,
-    accent: "violet",
+    accent: "signal",
     recordTiming: "real",
     recordFixedDelayMs: 30,
     recordMouseMoves: false,
@@ -111,6 +113,7 @@ export function mockBackend(): Backend {
   const monitorSubs = new Set<(e: MonitorEvent[]) => void>();
   const recSubs = new Set<(n: number) => void>();
   const hudSubs = new Set<(h: Hud) => void>();
+  const activitySubs = new Set<(h: Hud) => void>();
   let recording: Step[] | null = null;
   let monitorOn = false;
   const t0 = performance.now();
@@ -163,10 +166,13 @@ export function mockBackend(): Backend {
     async setArmed(armed) {
       const next = armed ?? !status.armed;
       set({ armed: next, running: next ? status.running : [], locks: next ? status.locks : [] });
-      hudSubs.forEach((cb) => cb({ text: next ? "MacroForge on" : "MacroForge off", on: next }));
+      const h = { text: next ? "Bindings on" : "Bindings off", on: next };
+      hudSubs.forEach((cb) => cb(h));
+      activitySubs.forEach((cb) => cb(h));
     },
     async panicStop() {
       set({ running: [], locks: [] });
+      activitySubs.forEach((cb) => cb({ text: "Stopped everything", on: false }));
     },
     captureInput(timeoutMs) {
       return new Promise((resolve) => {
@@ -257,6 +263,7 @@ export function mockBackend(): Backend {
       return false;
     },
     async openDataDir() {},
+    async testSound() {},
     async previewHud() {
       hudSubs.forEach((cb) => cb({ text: "Auto-clicker on", on: true }));
     },
@@ -264,6 +271,7 @@ export function mockBackend(): Backend {
     onMonitor: (cb) => (monitorSubs.add(cb), () => monitorSubs.delete(cb)),
     onRecorded: (cb) => (recSubs.add(cb), () => recSubs.delete(cb)),
     onHud: (cb) => (hudSubs.add(cb), () => hudSubs.delete(cb)),
+    onActivity: (cb) => (activitySubs.add(cb), () => activitySubs.delete(cb)),
   };
 }
 

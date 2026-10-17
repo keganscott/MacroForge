@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { KeyField } from "../components/KeyField";
+import { MacroTimeline } from "../components/Timeline";
 import { useNavigate } from "../components/Shell";
 import { Button, Card, cx, Dialog, Empty, Eyebrow, IconButton, Keycap, LiveDot, NumberField, PageHeader, Segmented, Switch, TextInput } from "../components/ui";
 import { fmtMs, macroDuration, macroUsers, newId, stepSummary } from "../lib/describe";
@@ -273,6 +274,8 @@ function MacroEditor({ macro }: { macro: Macro }) {
           )}
         </div>
       </Card>
+
+      <MacroTimeline steps={macro.steps} selected={selected} onSelect={setSelected} playing={running} />
 
       {/* ------------------------------------------------ add-step bar */}
       <div className="mb-3 flex flex-wrap items-center gap-1.5">

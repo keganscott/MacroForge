@@ -58,7 +58,6 @@ fn main() {
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(app, &[&open, &armed, &stop, &sep, &quit])?;
-            notifier.set_tray_check(armed.clone());
             let mut tray = TrayIconBuilder::with_id("main")
                 .tooltip("MacroForge")
                 .menu(&menu)
@@ -81,7 +80,7 @@ fn main() {
             if let Some(icon) = app.default_window_icon() {
                 tray = tray.icon(icon.clone());
             }
-            tray.build(app)?;
+            notifier.set_tray(tray.build(app)?, armed, loaded.data.settings.armed_on_launch);
 
             #[cfg(windows)]
             if let Some(hud) = app.get_webview_window("hud") {
@@ -139,6 +138,7 @@ fn main() {
             commands::relaunch_admin,
             commands::open_data_dir,
             commands::preview_hud,
+            commands::test_sound,
         ])
         .build(tauri::generate_context!())
         .expect("error while building MacroForge");

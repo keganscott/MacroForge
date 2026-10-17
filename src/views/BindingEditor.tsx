@@ -264,7 +264,7 @@ export function BindingEditor({
 function StepLabel({ n, children }: { n: number; children: React.ReactNode }) {
   return (
     <p className="mb-3 flex items-center gap-2.5 text-base font-extrabold tracking-tight">
-      <span className="grid size-6 place-items-center rounded-md bg-violet text-xs text-white">{n}</span>
+      <span className="grid size-6 place-items-center rounded-md bg-violet text-xs text-on-accent">{n}</span>
       {children}
     </p>
   );
