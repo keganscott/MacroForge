@@ -26,6 +26,7 @@
     "allow-relaunch-admin",
     "allow-open-data-dir",
     "allow-preview-hud",
-    "allow-test-sound"
+    "allow-test-sound",
+    "allow-quit-app"
   ]
 }

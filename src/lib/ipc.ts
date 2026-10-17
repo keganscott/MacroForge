@@ -25,6 +25,7 @@ export interface Backend {
   openDataDir(): Promise<void>;
   previewHud(): Promise<void>;
   testSound(on: boolean): Promise<void>;
+  quitApp(): Promise<void>;
   onStatus(cb: (s: Status) => void): () => void;
   onMonitor(cb: (e: MonitorEvent[]) => void): () => void;
   onRecorded(cb: (n: number) => void): () => void;
@@ -69,6 +70,7 @@ async function tauriBackend(): Promise<Backend> {
     openDataDir: () => invoke("open_data_dir"),
     previewHud: () => invoke("preview_hud"),
     testSound: (on) => invoke("test_sound", { on }),
+    quitApp: () => invoke("quit_app"),
     onStatus: (cb) => sub("status", cb),
     onMonitor: (cb) => sub("monitor", cb),
     onRecorded: (cb) => sub("recorded", cb),

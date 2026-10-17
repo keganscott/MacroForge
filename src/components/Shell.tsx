@@ -1,16 +1,17 @@
 import { createContext, useContext, useLayoutEffect, useRef, type ReactNode } from "react";
-import { Activity, Gauge, Keyboard, LayoutGrid, ListVideo, OctagonX, Power, Settings as SettingsIcon, Wand2 } from "lucide-react";
+import { Activity, Gamepad2, Gauge, Keyboard, LayoutGrid, ListVideo, OctagonX, Power, Settings as SettingsIcon, Wand2 } from "lucide-react";
 
 import { comboName } from "../lib/keys";
 import { backend, dismissToast, useStore } from "../store";
 import { Logo } from "./brand";
 import { cx, LiveDot, SampleBadge } from "./ui";
 
-export type ViewId = "home" | "tools" | "bindings" | "macros" | "performance" | "settings";
+export type ViewId = "home" | "tools" | "presets" | "bindings" | "macros" | "performance" | "settings";
 
 export const VIEWS: { id: ViewId; label: string; group: string; Icon: typeof LayoutGrid }[] = [
   { id: "home", label: "Home", group: "Overview", Icon: LayoutGrid },
   { id: "tools", label: "Quick tools", group: "Build", Icon: Wand2 },
+  { id: "presets", label: "Game presets", group: "Build", Icon: Gamepad2 },
   { id: "bindings", label: "Bindings", group: "Build", Icon: Keyboard },
   { id: "macros", label: "Macros", group: "Build", Icon: ListVideo },
   { id: "performance", label: "Performance", group: "System", Icon: Gauge },

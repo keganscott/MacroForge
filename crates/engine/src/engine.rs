@@ -132,6 +132,89 @@ pub struct Stats {
     pub latency_p99_us: f64,
     pub latency_max_us: f64,
     pub send_failures: u64,
+    /// The latest rapid fire run: what it was asked for and how late each
+    /// press actually went out against its schedule.
+    pub rapid_label: String,
+    pub rapid_target_ms: f64,
+    pub rapid_hold_ms: f64,
+    pub rapid_presses: usize,
+    pub rapid_late_p50_us: f64,
+    pub rapid_late_p99_us: f64,
+    pub rapid_late_max_us: f64,
+}
+
+/// Timing of the latest rapid fire run.
+#[derive(Default)]
+struct Rhythm {
+    label: String,
+    target_ms: f64,
+    hold_ms: f64,
+    presses: usize,
+    late_us: Vec<f64>,
+}
+
+// ------------------------------------------------------------------ pool --
+
+type Task = Box<dyn FnOnce() + Send>;
+
+/// Threads that run macros and rapid fire, started up front and parked at
+/// time-critical priority. A fresh thread per press starts at normal
+/// priority, and while a game keeps the CPU busy it can wait a long time for
+/// its first slice: measured at a median of 0.7 s with every core loaded
+/// (examples/start_check.rs), against about 8 µs for a parked thread.
+struct Pool {
+    tx: Sender<Task>,
+    rx: Receiver<Task>,
+    idle: Arc<std::sync::atomic::AtomicUsize>,
+    platform: Arc<dyn Platform>,
+    spawned: usize,
+}
+
+const POOL_START: usize = 4;
+const POOL_MAX: usize = 64;
+
+impl Pool {
+    fn new(platform: Arc<dyn Platform>) -> Pool {
+        let (tx, rx) = unbounded();
+        let mut pool = Pool { tx, rx, idle: Arc::new(std::sync::atomic::AtomicUsize::new(0)), platform, spawned: 0 };
+        for _ in 0..POOL_START {
+            pool.grow();
+        }
+        // Wait (briefly) until they are parked, so the first press is instant.
+        let deadline = std::time::Instant::now() + Duration::from_millis(500);
+        while pool.idle.load(Ordering::Acquire) < POOL_START && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        pool
+    }
+
+    fn grow(&mut self) {
+        let (rx, idle, platform) = (self.rx.clone(), self.idle.clone(), self.platform.clone());
+        let n = self.spawned;
+        let ok = std::thread::Builder::new().name(format!("macroforge-worker-{n}")).spawn(move || {
+            platform.worker_setup();
+            loop {
+                idle.fetch_add(1, Ordering::AcqRel);
+                let task = rx.recv();
+                idle.fetch_sub(1, Ordering::AcqRel);
+                match task {
+                    Ok(task) => task(),
+                    Err(_) => break,
+                }
+            }
+        });
+        if ok.is_ok() {
+            self.spawned += 1;
+        }
+    }
+
+    fn submit(&mut self, task: Task) {
+        // Everyone busy: add a thread (it parks for next time too).
+        if self.idle.load(Ordering::Acquire) == 0 && self.spawned < POOL_MAX {
+            self.grow();
+        }
+        let _ = self.tx.send(task);
+    }
 }
 
 enum Cmd {
@@ -173,6 +256,7 @@ pub struct Engine {
     tx: Sender<Cmd>,
     shared: Arc<Shared>,
     latency: Arc<Mutex<Latency>>,
+    rhythm: Arc<Mutex<Rhythm>>,
     platform: Arc<dyn Platform>,
     thread: Mutex<Option<JoinHandle<()>>>,
 }
@@ -183,6 +267,7 @@ impl Engine {
         let (tx, rx) = unbounded();
         let shared = Arc::new(Shared::new(hook_tx));
         let latency = Arc::new(Mutex::new(Latency::default()));
+        let rhythm = Arc::new(Mutex::new(Rhythm::default()));
         let hook = platform.start_hook(shared.clone());
         let mut core = Core {
             armed: data.settings.armed_on_launch,
@@ -203,6 +288,8 @@ impl Engine {
             monitor: false,
             monitor_buf: Vec::new(),
             latency: latency.clone(),
+            rhythm: rhythm.clone(),
+            pool: Pool::new(platform.clone()),
         };
         let thread = std::thread::Builder::new()
             .name("macroforge-engine".into())
@@ -213,7 +300,7 @@ impl Engine {
                 core.run(rx, hook_rx);
             })
             .expect("spawn engine thread");
-        Engine { tx, shared, latency, platform, thread: Mutex::new(Some(thread)) }
+        Engine { tx, shared, latency, rhythm, platform, thread: Mutex::new(Some(thread)) }
     }
 
     pub fn set_data(&self, data: Data) {
@@ -293,6 +380,19 @@ impl Engine {
             s.latency_p99_us = pct(0.99);
             s.latency_max_us = *v.last().unwrap();
         }
+        let r = self.rhythm.lock();
+        if r.presses > 0 {
+            let mut late = r.late_us.clone();
+            late.sort_by(|a, b| a.total_cmp(b));
+            let pct = |p: f64| late[((late.len() - 1) as f64 * p).round() as usize];
+            s.rapid_label = r.label.clone();
+            s.rapid_target_ms = r.target_ms;
+            s.rapid_hold_ms = r.hold_ms;
+            s.rapid_presses = r.presses;
+            s.rapid_late_p50_us = pct(0.5);
+            s.rapid_late_p99_us = pct(0.99);
+            s.rapid_late_max_us = *late.last().unwrap();
+        }
         s
     }
 
@@ -301,6 +401,7 @@ impl Engine {
         self.shared.busy_ns.store(0, Ordering::Relaxed);
         self.shared.max_ns.store(0, Ordering::Relaxed);
         self.latency.lock().0.clear();
+        *self.rhythm.lock() = Rhythm::default();
     }
 
     /// Stop every run, release every key, remove the hooks. Idempotent.
@@ -339,6 +440,8 @@ struct Core {
     monitor: bool,
     monitor_buf: Vec<MonitorEvent>,
     latency: Arc<Mutex<Latency>>,
+    rhythm: Arc<Mutex<Rhythm>>,
+    pool: Pool,
 }
 
 impl Core {
@@ -671,9 +774,18 @@ impl Core {
         let timing = self.data.settings.timing;
         let tx = self.tx.clone();
         let latency = self.latency.clone();
+        let rhythm = self.rhythm.clone();
+        if let Job::Rapid { rate, hold_ms, .. } = &job {
+            let period = 1000.0 / rate.max(0.01);
+            *rhythm.lock() = Rhythm {
+                label: label.clone(),
+                target_ms: period,
+                hold_ms: runner::rapid_hold(*hold_ms, period),
+                ..Default::default()
+            };
+        }
         let (c2, id2) = (cancel.clone(), id.clone());
-        let spawned = std::thread::Builder::new().name(format!("macroforge-run-{run}")).spawn(move || {
-            platform.worker_setup();
+        self.pool.submit(Box::new(move || {
             let out = platform.output();
             let mut waiter = platform.waiter(timing);
             latency.lock().push((now_ms() - t) * 1000.0);
@@ -684,16 +796,20 @@ impl Core {
                 match job {
                     Job::Macro { steps, lp } => runner::run_macro(&steps, lp, &*out, &mut cx),
                     Job::Rapid { output, rate, hold_ms, jitter_pct } => {
-                        runner::run_rapid(output, rate, hold_ms, jitter_pct, &*out, &mut cx)
+                        runner::run_rapid(output, rate, hold_ms, jitter_pct, &*out, &mut cx, &mut |late| {
+                            let mut r = rhythm.lock();
+                            r.presses += 1;
+                            if r.late_us.len() < 4096 {
+                                r.late_us.push(late * 1000.0);
+                            }
+                        })
                     }
                 }
             }));
             let _ = tx.send(Cmd::WorkerDone { id: id2, run });
-        });
-        if spawned.is_ok() {
-            self.runs.insert(id.clone(), Run { cancel, run, info: RunInfo { id: id.to_string(), label, mode, started_ms: now_ms() } });
-            self.publish();
-        }
+        }));
+        self.runs.insert(id.clone(), Run { cancel, run, info: RunInfo { id: id.to_string(), label, mode, started_ms: now_ms() } });
+        self.publish();
     }
 
     fn stop_run(&mut self, id: &Arc<str>, immediately: bool) {

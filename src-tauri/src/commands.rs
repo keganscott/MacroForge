@@ -200,6 +200,12 @@ pub fn open_data_dir(st: State<AppState>) {
     let _ = std::process::Command::new("explorer").arg(&st.dir).spawn();
 }
 
+/// Quit completely (Home offers it when a game that flags macro tools is in front).
+#[tauri::command]
+pub fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 #[tauri::command]
 pub fn test_sound(st: State<AppState>, on: bool) {
     st.notifier.test_sound(on);

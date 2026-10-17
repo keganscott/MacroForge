@@ -31,24 +31,31 @@ const defaults = (): Data => ({
       ],
     },
     {
-      id: "p-arc",
-      name: "ARC Raiders",
+      id: "p-mc",
+      name: "Minecraft",
       enabled: true,
-      apps: ["pioneergame.exe"],
+      apps: ["javaw.exe", "minecraft.windows.exe"],
       bindings: [
         {
-          id: "b-run",
-          name: "Auto-run",
+          id: "b-farm",
+          name: "Mob farm attacker",
+          enabled: true,
+          trigger: { input: 0x75, mods: 0, mode: "toggle", passthrough: false },
+          action: { type: "rapid", output: MOUSE_LEFT, rate: 1.6, holdMs: 30, jitterPct: 0 },
+        },
+        {
+          id: "b-fish",
+          name: "AFK fishing",
+          enabled: true,
+          trigger: { input: 0x76, mods: 0, mode: "press", passthrough: false },
+          action: { type: "holdLock", output: MOUSE_RIGHT },
+        },
+        {
+          id: "b-walk",
+          name: "Auto-walk",
           enabled: true,
           trigger: { input: MOUSE_X2, mods: 0, mode: "press", passthrough: false },
           action: { type: "holdLock", output: 0x57 },
-        },
-        {
-          id: "b-loot",
-          name: "Quick loot",
-          enabled: true,
-          trigger: { input: 0x46, mods: 0, mode: "hold", passthrough: false },
-          action: { type: "rapid", output: 0x46, rate: 12, holdMs: 20, jitterPct: 0 },
         },
         {
           id: "b-heal",
@@ -63,7 +70,7 @@ const defaults = (): Data => ({
   macros: [
     {
       id: "m-heal",
-      name: "Heal + reload",
+      name: "Eat and switch back",
       steps: [
         { type: "press", input: 0x34, holdMs: 20 },
         { type: "delay", ms: 120, jitterMs: 10 },
@@ -120,12 +127,12 @@ export function mockBackend(): Backend {
 
   let status: Status = {
     armed: true,
-    foreground: "pioneergame.exe",
+    foreground: "javaw.exe",
     foregroundElevated: false,
     selfElevated: false,
     pausedOwnWindow: false,
-    activeProfiles: ["global", "p-arc"],
-    liveBindings: 5,
+    activeProfiles: ["global", "p-mc"],
+    liveBindings: 6,
     running: [],
     locks: [],
     hook: { keyboard: true, mouse: true },
@@ -237,7 +244,7 @@ export function mockBackend(): Backend {
       return status;
     },
     async getStats() {
-      return { hookEvents: 4821, hookAvgUs: 1.9, hookMaxUs: 41.2, latencySamples: 212, latencyP50Us: 84, latencyP99Us: 310, latencyMaxUs: 702, sendFailures: 0 };
+      return { hookEvents: 4821, hookAvgUs: 1.9, hookMaxUs: 41.2, latencySamples: 212, latencyP50Us: 84, latencyP99Us: 310, latencyMaxUs: 702, sendFailures: 0, rapidLabel: "Auto-clicker", rapidTargetMs: 66.7, rapidHoldMs: 33.3, rapidPresses: 128, rapidLateP50Us: 0.3, rapidLateP99Us: 2.1, rapidLateMaxUs: 41 };
     },
     async resetStats() {},
     async runBenchmark() {
@@ -264,6 +271,7 @@ export function mockBackend(): Backend {
     },
     async openDataDir() {},
     async testSound() {},
+    async quitApp() {},
     async previewHud() {
       hudSubs.forEach((cb) => cb({ text: "Auto-clicker on", on: true }));
     },

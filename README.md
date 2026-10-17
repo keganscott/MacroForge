@@ -16,6 +16,24 @@ React/TypeScript/Tailwind UI.
   scroll spam, text snippets, and disable-a-key (for example both Windows
   keys). Each takes two clicks and becomes a normal binding you can
   fine-tune.
+- **Game presets.** Each game card says plainly what its rules allow (with the
+  source), lists the game's own settings to use first, then offers bindings
+  marked "Sends nothing to the game" or "Sends input". Install never
+  overwrites a key you already use. Home warns you, with a Quit button, when
+  a game in front has rules or anti-cheat against macros.
+  - **ARC Raiders:** its anti-cheat flags macro tools that are merely running
+    (Embark Help Center), so the preset is guidance only: quit MacroForge
+    before playing, and bind the game's own Aim (Toggle) and Sprint (Toggle).
+  - **Fortnite:** Epic bans macros. Only optional Windows-key blocking, which
+    sends nothing to the game.
+  - **Minecraft:** mob-farm attacker at the 1.6/s full-damage sword rhythm,
+    AFK fishing, hold to mine, auto-walk, and fast place at the game's own
+    5/s cap.
+  - **Stardew Valley:** animation-cancel fast tools and watering can, timed
+    from the community's tested script (1-frame click, 5- or 9-frame wait,
+    Right Shift + R + Delete).
+  - **Any game:** Windows key, Caps Lock, and a clicker-game auto-clicker
+    (off by default).
 - **Bindings.** Any key, mouse button (including Mouse 4/5), or wheel
   direction, with optional Ctrl / Shift / Alt / Win, can:
   - play a macro, in Press, Hold or Toggle mode, with repeat counts and a

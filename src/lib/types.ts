@@ -126,6 +126,13 @@ export interface Stats {
   latencyP99Us: number;
   latencyMaxUs: number;
   sendFailures: number;
+  rapidLabel: string;
+  rapidTargetMs: number;
+  rapidHoldMs: number;
+  rapidPresses: number;
+  rapidLateP50Us: number;
+  rapidLateP99Us: number;
+  rapidLateMaxUs: number;
 }
 
 export interface BenchRow {

@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::input::{self, Input, MOD_ALL};
 
 /// 2: MacroForge's own Signal accent became the default; sound style and volume.
-pub const DATA_VERSION: u32 = 2;
+/// 3: rapid fire's old 15 / 20 ms default hold became auto (half the period).
+pub const DATA_VERSION: u32 = 3;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -158,8 +159,9 @@ fn yes() -> bool {
 fn repress_ignore() -> Repress {
     Repress::Ignore
 }
+/// 0 = auto: hold for half the period (runner::rapid_hold).
 fn default_hold() -> f64 {
-    15.0
+    0.0
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -381,7 +383,7 @@ impl Action {
             }
             Action::Rapid { output, rate, hold_ms, jitter_pct } => {
                 *rate = clamp_f(*rate, MIN_RATE, MAX_RATE, 10.0);
-                *hold_ms = clamp_f(*hold_ms, 0.0, MAX_HOLD_MS, 15.0);
+                *hold_ms = clamp_f(*hold_ms, 0.0, MAX_HOLD_MS, 0.0);
                 *jitter_pct = clamp_f(*jitter_pct, 0.0, 50.0, 0.0);
                 input::is_valid(*output)
             }
@@ -412,6 +414,17 @@ impl Data {
         if self.version < 2 && self.settings.accent == "violet" {
             // Version 1 defaulted to the family violet; MacroForge now has its own.
             self.settings.accent = "signal".into();
+        }
+        if self.version < 3 {
+            for b in self.profiles.iter_mut().flat_map(|p| p.bindings.iter_mut()) {
+                if let Action::Rapid { hold_ms, .. } = &mut b.action {
+                    // 15 and 20 ms were the old defaults, short enough for a
+                    // busy game to miss between frames.
+                    if *hold_ms == 15.0 || *hold_ms == 20.0 {
+                        *hold_ms = 0.0;
+                    }
+                }
+            }
         }
         self.version = DATA_VERSION;
 
@@ -541,6 +554,30 @@ mod tests {
         d.settings.accent = "violet".into();
         d.sanitize();
         assert_eq!(d.settings.accent, "violet", "a later choice of violet is kept");
+    }
+
+    #[test]
+    fn version_2_rapid_defaults_become_auto() {
+        let mut d = Data { version: 2, ..Default::default() };
+        for (id, hold) in [("a", 15.0), ("b", 20.0), ("c", 40.0)] {
+            d.profiles[0].bindings.push(Binding {
+                id: id.into(),
+                trigger: Trigger { input: 0x41, ..Default::default() },
+                action: Action::Rapid { output: 256, rate: 10.0, hold_ms: hold, jitter_pct: 0.0 },
+                ..Default::default()
+            });
+        }
+        d.sanitize();
+        let holds: Vec<f64> = d.profiles[0]
+            .bindings
+            .iter()
+            .map(|b| match b.action {
+                Action::Rapid { hold_ms, .. } => hold_ms,
+                _ => -1.0,
+            })
+            .collect();
+        assert_eq!(holds, vec![0.0, 0.0, 40.0], "a deliberate 40 ms is kept");
+        assert_eq!(d.version, DATA_VERSION);
     }
 
     #[test]

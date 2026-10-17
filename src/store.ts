@@ -70,7 +70,7 @@ export const backend = (): Backend => {
 
 export async function boot() {
   be = await getBackend();
-  const snap = await be.getSnapshot();
+  const snap = await snapshotWhenReady(be);
   set({
     ready: true,
     sample: be.sample,
@@ -93,6 +93,18 @@ export async function boot() {
     set({ status });
   });
   be.onActivity((h) => log(h.text, h.on));
+}
+
+/** The engine may still be starting when the page loads: retry for a few seconds. */
+async function snapshotWhenReady(b: Backend) {
+  for (let i = 0; ; i++) {
+    try {
+      return await b.getSnapshot();
+    } catch (e) {
+      if (i >= 40 || !/not managed|not ready/i.test(String(e))) throw e;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
 }
 
 let activitySeq = 0;

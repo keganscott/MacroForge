@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Gauge, Keyboard, ListVideo, Lock, MousePointerClick, ShieldAlert, Square, Wand2 } from "lucide-react";
+import { ArrowRight, Gamepad2, Gauge, Keyboard, ListVideo, Lock, MousePointerClick, Power, ShieldAlert, Square, Wand2 } from "lucide-react";
 
 import { SignalTrace } from "../components/brand";
 import { MasterSwitch, useNavigate } from "../components/Shell";
 import { Button, Callout, Card, cx, Eyebrow, Keycap, LiveDot, SectionTitle, StatusBadge } from "../components/ui";
 import { actionSummary, bindingTitle, fmtUs } from "../lib/describe";
+import { rulesFor } from "../lib/presets";
 import type { Binding, Stats } from "../lib/types";
 import { backend, useStore } from "../store";
 
@@ -27,6 +28,8 @@ export function HomeView() {
   const lockBindings: Binding[] = data.profiles.flatMap((p) => p.bindings).filter((b) => status.locks.includes(b.id));
   const s = data.settings;
   const elevatedProblem = status.foregroundElevated === true && !status.selfElevated;
+  const fgRules = status.foreground ? rulesFor([status.foreground]) : null;
+  const strict = fgRules && fgRules.rules.level !== "yours" ? fgRules : null;
 
   const headline = !status.armed
     ? "Bindings are off."
@@ -61,6 +64,22 @@ export function HomeView() {
           </p>
         </div>
       </div>
+
+      {strict && (
+        <div className="mb-5">
+          <Callout
+            tone="bad"
+            title={strict.rules.level === "incompatible" ? `${strict.game.name} flags macro tools that are running` : `${strict.game.name}’s rules ban macros`}
+            action={
+              <Button variant="danger" icon={<Power aria-hidden className="size-4" />} onClick={() => void backend().quitApp()}>
+                Quit MacroForge
+              </Button>
+            }
+          >
+            {strict.rules.summary}
+          </Callout>
+        </div>
+      )}
 
       {elevatedProblem && (
         <div className="mb-5">
@@ -203,6 +222,7 @@ export function HomeView() {
           <SectionTitle>Start here</SectionTitle>
           <div className="flex flex-col gap-2">
             <Shortcut icon={<MousePointerClick aria-hidden className="size-4" />} title="Auto-clicker, turbo, remap" hint="Quick tools: two clicks each" onClick={() => navigate({ view: "tools" })} />
+            <Shortcut icon={<Gamepad2 aria-hidden className="size-4" />} title="Game presets" hint="Minecraft, Stardew Valley, and the rules for ARC Raiders and Fortnite" onClick={() => navigate({ view: "presets" })} />
             <Shortcut icon={<ListVideo aria-hidden className="size-4" />} title="Record a macro" hint="Do it once, replay it on a key" onClick={() => navigate({ view: "macros" })} />
             <Shortcut icon={<Keyboard aria-hidden className="size-4" />} title="Per-game profiles" hint="Switch automatically with the game in front" onClick={() => navigate({ view: "bindings" })} />
             <Shortcut icon={<Gauge aria-hidden className="size-4" />} title="Check timing on this PC" hint="Measure, don't guess" onClick={() => navigate({ view: "performance" })} />

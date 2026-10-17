@@ -82,6 +82,20 @@ fn main() {
             }
             notifier.set_tray(tray.build(app)?, armed, loaded.data.settings.armed_on_launch);
 
+            // State first, windows second: a page that loads before the state
+            // exists gets "state not managed" from its first command. The
+            // windows are declared with `create: false` and built here.
+            app.manage(AppState {
+                engine,
+                data: Mutex::new(loaded.data.clone()),
+                dir: dir.clone(),
+                warning: Mutex::new(loaded.warning.clone()),
+                notifier: notifier.clone(),
+            });
+            for cfg in app.config().app.windows.clone() {
+                tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?.build()?;
+            }
+
             #[cfg(windows)]
             if let Some(hud) = app.get_webview_window("hud") {
                 let _ = hud.set_ignore_cursor_events(true);
@@ -90,14 +104,6 @@ fn main() {
                     notifier.set_hud_hwnd(h.0 as isize);
                 }
             }
-
-            app.manage(AppState {
-                engine,
-                data: Mutex::new(loaded.data.clone()),
-                dir: dir.clone(),
-                warning: Mutex::new(loaded.warning.clone()),
-                notifier,
-            });
 
             if !start_hidden {
                 show_main(&handle);
@@ -139,6 +145,7 @@ fn main() {
             commands::open_data_dir,
             commands::preview_hud,
             commands::test_sound,
+            commands::quit_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while building MacroForge");

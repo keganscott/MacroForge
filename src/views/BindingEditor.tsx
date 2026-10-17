@@ -8,6 +8,7 @@ import { KeyField } from "../components/KeyField";
 import { useNavigate } from "../components/Shell";
 import { Button, Callout, cx, Dialog, Field, NumberField, Segmented, Select, Slider, Switch, TextInput } from "../components/ui";
 import { ACTION_TEXT, conflicts, fmtRate, MODE_TEXT, newId } from "../lib/describe";
+import { rulesFor } from "../lib/presets";
 import { comboName, keyName, MOUSE_LEFT } from "../lib/keys";
 import type { Action, ActionType, Binding, Data, Macro, TriggerMode } from "../lib/types";
 import { toast, update, useStore } from "../store";
@@ -35,7 +36,7 @@ function defaultAction(type: ActionType, b: Binding, macros: Macro[]): Action {
     case "macro":
       return { type, macroId: macros[0]?.id ?? "", repeat: 1, onRepress: "ignore", stopImmediately: true };
     case "rapid":
-      return { type, output: b.trigger.input || MOUSE_LEFT, rate: 12, holdMs: 15, jitterPct: 0 };
+      return { type, output: b.trigger.input || MOUSE_LEFT, rate: 12, holdMs: 0, jitterPct: 0 };
     case "remap":
       return { type, output: 0, mods: 0 };
     case "holdLock":
@@ -79,6 +80,7 @@ export function BindingEditor({
   }, [open, initial, profileId]);
 
   const profile = data.profiles.find((p) => p.id === pid) ?? data.profiles[0]!;
+  const gameRules = rulesFor(profile.apps);
   const clash = conflicts(profile, b);
   const s = data.settings;
   const hotkeyClash =
@@ -247,6 +249,12 @@ export function BindingEditor({
           </div>
         </section>
 
+        {gameRules && gameRules.rules.level !== "yours" && b.action.type !== "block" && (
+          <Callout tone="bad" title={gameRules.rules.level === "incompatible" ? `${gameRules.game.name} flags macro tools that are running` : `${gameRules.game.name}’s rules ban macros`}>
+            {gameRules.rules.summary}
+          </Callout>
+        )}
+
         {/* ------------------------------------------------ name, profile */}
         <section className="grid grid-cols-2 gap-4">
           <Field label="Name (optional)">
@@ -287,8 +295,29 @@ function RapidOptions({ action, onChange }: { action: Extract<Action, { type: "r
         </span>
       </Field>
       <div className="grid grid-cols-2 gap-5">
-        <Field label="Hold each press" hint="Some games miss presses shorter than a frame; 15–30 ms is safe.">
-          <NumberField label="Hold each press" min={0} max={5000} value={action.holdMs} onChange={(holdMs) => onChange({ holdMs })} suffix="ms" />
+        <Field
+          label="Press length"
+          hint={
+            action.holdMs > 0
+              ? "Games that read input once a frame can miss presses shorter than a frame, more so when busy. Auto avoids that."
+              : `Down ${(period / 2).toFixed(1)} ms, up ${(period / 2).toFixed(1)} ms: an even split, so neither half is short enough for a busy game to miss.`
+          }
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <Segmented
+              size="sm"
+              label="Press length"
+              value={action.holdMs > 0 ? "custom" : "auto"}
+              onChange={(v) => onChange({ holdMs: v === "auto" ? 0 : Math.round(Math.min(30, period * 0.5)) })}
+              options={[
+                { value: "auto", label: "Auto (half)" },
+                { value: "custom", label: "Custom" },
+              ]}
+            />
+            {action.holdMs > 0 && (
+              <NumberField label="Press length" min={1} max={5000} value={action.holdMs} onChange={(holdMs) => onChange({ holdMs })} suffix="ms" width="w-20" />
+            )}
+          </div>
         </Field>
         <Field label="Timing variation" hint="Spread each gap by up to this much, so the rhythm is not perfectly even.">
           <NumberField label="Timing variation" min={0} max={50} value={action.jitterPct} onChange={(jitterPct) => onChange({ jitterPct })} suffix="%" />

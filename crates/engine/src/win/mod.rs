@@ -79,8 +79,14 @@ impl Platform for WinPlatform {
         Box::new(timer::HiResWaiter::new(timing))
     }
 
+    /// Workers and the engine thread run time-critical, so a game that loads
+    /// every core cannot starve the click rhythm (examples/rhythm_check.rs:
+    /// p99 under 3 µs late at full load, against up to 80 µs at "highest").
+    /// The multimedia scheduler's "Games" class measured worse: it throttles
+    /// threads that use CPU and dropped presses. They sleep between presses;
+    /// in Precise mode each wait spins only for its last 0.8 ms.
     fn worker_setup(&self) {
-        sys::raise_thread_priority(false);
+        sys::raise_thread_priority(true);
     }
 
     fn foreground(&self, hwnd: isize) -> Foreground {

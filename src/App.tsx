@@ -6,6 +6,7 @@ import { Callout, Button } from "./components/ui";
 import { boot, dismissWarning, useStore } from "./store";
 import { HomeView } from "./views/Home";
 import { ToolsView } from "./views/Tools";
+import { PresetsView } from "./views/Presets";
 import { BindingsView } from "./views/Bindings";
 import { MacrosView } from "./views/Macros";
 import { PerformanceView } from "./views/Performance";
@@ -48,6 +49,7 @@ export function App() {
   const views: Record<ViewId, React.ReactNode> = {
     home: <HomeView />,
     tools: <ToolsView />,
+    presets: <PresetsView />,
     bindings: <BindingsView focus={nav.view === "bindings" ? nav.focus : undefined} />,
     macros: <MacrosView focus={nav.view === "macros" ? nav.focus : undefined} />,
     performance: <PerformanceView />,

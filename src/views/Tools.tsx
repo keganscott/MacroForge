@@ -116,7 +116,7 @@ function AutoClicker({ onAdd }: { onAdd: AddFn }) {
           <span className="mr-auto text-xs text-ink-muted">
             {comboName(key.input, key.mods)} {mode === "toggle" ? "starts / stops" : "held"} → {keyName(button)} {fmtRate(rate)}×/s
           </span>
-          <Button variant="primary" disabled={!key.input} onClick={() => onAdd("Auto-clicker", { input: key.input, mods: key.mods, mode }, { type: "rapid", output: button, rate, holdMs: 15, jitterPct: 0 })}>
+          <Button variant="primary" disabled={!key.input} onClick={() => onAdd("Auto-clicker", { input: key.input, mods: key.mods, mode }, { type: "rapid", output: button, rate, holdMs: 0, jitterPct: 0 })}>
             Add auto-clicker
           </Button>
         </>
@@ -154,7 +154,7 @@ function Turbo({ onAdd }: { onAdd: AddFn }) {
       title="Turbo key"
       hint="Hold a key or button and it repeats by itself, like a controller's turbo."
       footer={
-        <Button variant="primary" disabled={!key.input} onClick={() => onAdd(`Turbo ${keyName(key.input)}`, { input: key.input, mode: "hold" }, { type: "rapid", output: key.input, rate, holdMs: 20, jitterPct: 0 })}>
+        <Button variant="primary" disabled={!key.input} onClick={() => onAdd(`Turbo ${keyName(key.input)}`, { input: key.input, mode: "hold" }, { type: "rapid", output: key.input, rate, holdMs: 0, jitterPct: 0 })}>
           Add turbo
         </Button>
       }

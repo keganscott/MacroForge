@@ -201,16 +201,38 @@ pub fn run_macro(steps: &[Step], lp: Loop, out: &dyn Output, cx: &mut Ctx) {
     held.release_all();
 }
 
+/// How long each rapid-fire press is held. `hold_ms` of 0 means auto: half
+/// the period, a square wave. Games that read input once per frame can miss
+/// a press (or a release) shorter than a frame, and frames get longer when a
+/// game is busy; an even split keeps both halves as long as possible.
+pub fn rapid_hold(hold_ms: f64, period: f64) -> f64 {
+    if hold_ms <= 0.0 {
+        period * 0.5
+    } else {
+        // Leave at least a quarter of the period released, or the game sees
+        // one long press instead of separate taps.
+        hold_ms.min(period * 0.75)
+    }
+}
+
 /// Turbo / auto-click: tap `output` at `rate` per second until stopped.
-pub fn run_rapid(output: Input, rate: f64, hold_ms: f64, jitter_pct: f64, out: &dyn Output, cx: &mut Ctx) {
+/// `on_press` gets how late (ms) each press was against its schedule.
+pub fn run_rapid(
+    output: Input,
+    rate: f64,
+    hold_ms: f64,
+    jitter_pct: f64,
+    out: &dyn Output,
+    cx: &mut Ctx,
+    on_press: &mut dyn FnMut(f64),
+) {
     let mut held = Held::new(out);
     let period = 1000.0 / rate.max(0.01);
-    // Leave at least a quarter of the period released, or the game sees one
-    // long press instead of separate taps.
-    let hold = hold_ms.clamp(0.0, period * 0.75);
+    let hold = rapid_hold(hold_ms, period);
     let jitter = period * (jitter_pct / 100.0);
     loop {
         let start = cx.t;
+        on_press((now_ms() - start).max(0.0));
         held.press(output);
         if !input::is_momentary(output) {
             if hold > 0.0 && cx.wait(hold) {
@@ -370,7 +392,7 @@ pub mod tests {
         let (r2, c2) = (rec.clone(), c.clone());
         let h = std::thread::spawn(move || {
             let mut w = SpinWaiter { spin_ms: 2.0 };
-            run_rapid(256, 100.0, 3.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() });
+            run_rapid(256, 100.0, 3.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &mut |_| {});
         });
         std::thread::sleep(std::time::Duration::from_millis(205));
         c.stop();
@@ -383,6 +405,37 @@ pub mod tests {
         assert!((mean - 10.0).abs() < 0.5, "mean gap {mean}");
         // Ended released.
         assert_eq!(rec.events().last(), Some(&Ev::In(256, false)));
+    }
+
+    #[test]
+    fn auto_hold_is_a_square_wave() {
+        assert_eq!(rapid_hold(0.0, 66.0), 33.0);
+        assert_eq!(rapid_hold(15.0, 66.0), 15.0);
+        assert_eq!(rapid_hold(500.0, 100.0), 75.0);
+    }
+
+    #[test]
+    fn rapid_reports_its_timing() {
+        let rec = std::sync::Arc::new(Rec::default());
+        let c = std::sync::Arc::new(Cancel::new());
+        let (r2, c2) = (rec.clone(), c.clone());
+        let h = std::thread::spawn(move || {
+            let mut w = SpinWaiter { spin_ms: 2.0 };
+            let mut late = Vec::new();
+            run_rapid(256, 50.0, 0.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &mut |l| late.push(l));
+            late
+        });
+        std::thread::sleep(std::time::Duration::from_millis(110));
+        c.stop();
+        let late = h.join().unwrap();
+        assert!(late.len() >= 4, "{} presses", late.len());
+        assert!(late.iter().all(|l| *l < 3.0), "{late:?}");
+        // Auto hold: down for half of each 20 ms period.
+        let evs = rec.evs.lock().clone();
+        let downs: Vec<f64> = evs.iter().filter(|(_, e)| *e == Ev::In(256, true)).map(|(t, _)| *t).collect();
+        let ups: Vec<f64> = evs.iter().filter(|(_, e)| *e == Ev::In(256, false)).map(|(t, _)| *t).collect();
+        let held = ups[0] - downs[0];
+        assert!((9.0..12.0).contains(&held), "held {held} ms");
     }
 
     #[test]

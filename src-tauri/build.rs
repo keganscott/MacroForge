@@ -22,6 +22,7 @@ const COMMANDS: &[&str] = &[
     "open_data_dir",
     "preview_hud",
     "test_sound",
+    "quit_app",
 ];
 
 fn main() {

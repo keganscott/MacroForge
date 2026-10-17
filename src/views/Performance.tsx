@@ -90,6 +90,43 @@ export function PerformanceView() {
       </div>
 
       <div className="mt-8">
+        <SectionTitle>Rapid fire rhythm</SectionTitle>
+        <Card>
+          {stats && stats.rapidPresses > 0 ? (
+            <>
+              <p className="text-sm">
+                <span className="font-bold">{stats.rapidLabel}</span>
+                <span className="text-ink-muted">
+                  {" "}
+                  · last run · one press every {stats.rapidTargetMs.toFixed(1)} ms, held {stats.rapidHoldMs.toFixed(1)} ms · {stats.rapidPresses} presses
+                </span>
+              </p>
+              <dl className="mt-3 grid grid-cols-3 gap-3 text-sm">
+                {[
+                  ["Typical press", stats.rapidLateP50Us],
+                  ["99% of presses", stats.rapidLateP99Us],
+                  ["Latest press", stats.rapidLateMaxUs],
+                ].map(([label, us]) => (
+                  <div key={label as string} className="rounded-xl border border-line bg-surface-2 p-3">
+                    <dt className="text-[11px] font-bold text-ink-faint">{label as string}</dt>
+                    <dd className="mt-1 font-mono text-lg font-bold">{fmtUs(us as number)} late</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-3 text-xs text-ink-muted">
+                How far each press was from its exact moment, measured as it was sent. Use your rapid fire in a game, then check here: if these stay small while it feels uneven, the game is
+                dropping presses, and a slower rate or Auto press length helps.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-ink-muted">
+              Use any rapid fire or auto-clicker (in a game is best), then come back: this shows how evenly its presses actually went out.
+            </p>
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-8">
         <SectionTitle
           aside={
             <Button size="sm" variant="primary" busy={benching} icon={<Play aria-hidden className="size-3.5" />} onClick={() => void runBench()}>
