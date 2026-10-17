@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-relaunch-admin"
+description = "Enables the relaunch_admin command without any pre-configured scope."
+commands.allow = ["relaunch_admin"]
+
+[[permission]]
+identifier = "deny-relaunch-admin"
+description = "Denies the relaunch_admin command without any pre-configured scope."
+commands.deny = ["relaunch_admin"]

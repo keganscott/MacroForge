@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-armed"
+description = "Enables the set_armed command without any pre-configured scope."
+commands.allow = ["set_armed"]
+
+[[permission]]
+identifier = "deny-set-armed"
+description = "Denies the set_armed command without any pre-configured scope."
+commands.deny = ["set_armed"]

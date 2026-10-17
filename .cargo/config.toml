@@ -1,0 +1,5 @@
+# This project lives in OneDrive. Build output (several GB) goes to local app
+# data instead, so OneDrive never syncs it. Change or delete this line to build
+# into ./target.
+[build]
+target-dir = "C:/Users/KFS/AppData/Local/MacroForge-build/target"

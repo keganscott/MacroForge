@@ -1,0 +1,519 @@
+//! What the user builds: profiles of bindings, a library of macros, settings.
+//! Everything here is plain data (serde, camelCase for the UI). `sanitize`
+//! clamps every number and drops anything that cannot run, so a hand-edited
+//! or corrupt file can never hand the engine a 0 Hz rate or a 10-minute hold.
+
+use serde::{Deserialize, Serialize};
+
+use crate::input::{self, Input, MOD_ALL};
+
+pub const DATA_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Data {
+    pub version: u32,
+    pub profiles: Vec<Profile>,
+    pub macros: Vec<Macro>,
+    pub settings: Settings,
+}
+
+impl Default for Data {
+    fn default() -> Self {
+        Data { version: DATA_VERSION, profiles: vec![Profile::global()], macros: Vec::new(), settings: Settings::default() }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Profile {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    /// Executable names (`cs2.exe`) this profile is limited to. Empty means
+    /// everywhere. Matched case-insensitively against the app in front.
+    pub apps: Vec<String>,
+    pub bindings: Vec<Binding>,
+}
+
+impl Default for Profile {
+    fn default() -> Self {
+        Profile { id: String::new(), name: "Profile".into(), enabled: true, apps: Vec::new(), bindings: Vec::new() }
+    }
+}
+
+impl Profile {
+    pub fn global() -> Self {
+        Profile { id: "global".into(), name: "Everywhere".into(), ..Default::default() }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Binding {
+    pub id: String,
+    pub name: String,
+    pub enabled: bool,
+    pub trigger: Trigger,
+    pub action: Action,
+}
+
+impl Default for Binding {
+    fn default() -> Self {
+        Binding {
+            id: String::new(),
+            name: String::new(),
+            enabled: true,
+            trigger: Trigger::default(),
+            action: Action::Block,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Trigger {
+    pub input: Input,
+    /// Modifiers that must be held (input::MOD_*). Others may be held too.
+    pub mods: u8,
+    pub mode: TriggerMode,
+    /// Let the game see the trigger key as well. Off by default: the trigger
+    /// is consumed so only the binding's output reaches the game.
+    pub passthrough: bool,
+}
+
+impl Default for Trigger {
+    fn default() -> Self {
+        Trigger { input: 0, mods: 0, mode: TriggerMode::Press, passthrough: false }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum TriggerMode {
+    /// Run once per press.
+    Press,
+    /// Run repeatedly while held; stop on release.
+    Hold,
+    /// First press starts, second press stops.
+    Toggle,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Repress {
+    /// A press while it is still running is ignored.
+    Ignore,
+    /// A press while running stops it and starts it again from the top.
+    Restart,
+    /// A press while running stops it.
+    Stop,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum Action {
+    /// Play a macro from the library.
+    Macro {
+        macro_id: String,
+        /// Times to play per press (Press mode).
+        #[serde(default = "one")]
+        repeat: u32,
+        #[serde(default = "repress_ignore")]
+        on_repress: Repress,
+        /// Hold / Toggle: stop mid-macro (true) or finish the current pass.
+        #[serde(default = "yes")]
+        stop_immediately: bool,
+    },
+    /// Turbo key / auto-clicker: tap `output` at `rate` per second.
+    Rapid {
+        output: Input,
+        rate: f64,
+        /// How long each tap is held down, in ms.
+        #[serde(default = "default_hold")]
+        hold_ms: f64,
+        /// Random variation of each interval, 0-50 % of the period.
+        #[serde(default)]
+        jitter_pct: f64,
+    },
+    /// Send a different key or button (optionally with modifiers) instead.
+    Remap {
+        output: Input,
+        #[serde(default)]
+        mods: u8,
+    },
+    /// Press once to hold `output` down, press again to let go (auto-run).
+    HoldLock { output: Input },
+    /// Swallow the trigger (e.g. the Windows key while gaming).
+    Block,
+}
+
+fn one() -> u32 {
+    1
+}
+fn yes() -> bool {
+    true
+}
+fn repress_ignore() -> Repress {
+    Repress::Ignore
+}
+fn default_hold() -> f64 {
+    15.0
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Macro {
+    pub id: String,
+    pub name: String,
+    pub steps: Vec<Step>,
+}
+
+impl Default for Macro {
+    fn default() -> Self {
+        Macro { id: String::new(), name: "Macro".into(), steps: Vec::new() }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum Step {
+    /// Press and release a key or button, holding it `hold_ms`.
+    Press { input: Input, hold_ms: f64 },
+    Down { input: Input },
+    Up { input: Input },
+    /// Wheel notches (positive = up / right).
+    Wheel { delta: i32, horizontal: bool },
+    /// Relative mouse movement, spread over `duration_ms` (0 = instant).
+    Move { dx: i32, dy: i32, duration_ms: f64 },
+    /// Put the cursor at a desktop pixel position.
+    MoveTo { x: i32, y: i32 },
+    /// Wait `ms`, plus or minus up to `jitter_ms`.
+    Delay { ms: f64, jitter_ms: f64 },
+    /// Type text as Unicode characters.
+    Text { text: String, char_delay_ms: f64 },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TimingMode {
+    /// High-resolution timer only (~0.5 ms). Least CPU.
+    Efficient,
+    /// Timer, then a short spin to the exact microsecond. Default.
+    Precise,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Hotkey {
+    pub input: Input,
+    pub mods: u8,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Settings {
+    /// Turns every binding on or off. Scroll Lock by default (its LED shows the state).
+    pub master_hotkey: Hotkey,
+    /// Stops everything that is running and lets go of every held key.
+    pub panic_hotkey: Hotkey,
+    pub timing: TimingMode,
+    /// Bindings start armed when the app opens.
+    pub armed_on_launch: bool,
+    /// Ignore input other programs inject (on-screen keyboards, other macro tools).
+    pub ignore_foreign_injected: bool,
+    /// The small on-screen notice when a toggle or the master switch changes.
+    pub hud: bool,
+    pub hud_position: HudPosition,
+    pub sounds: bool,
+    pub close_to_tray: bool,
+    pub start_minimized: bool,
+    pub start_with_windows: bool,
+    pub accent: String,
+    /// Recorder: keep the real gaps between events, or use a fixed delay.
+    pub record_timing: RecordTiming,
+    pub record_fixed_delay_ms: f64,
+    pub record_mouse_moves: bool,
+    pub seen_welcome: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum HudPosition {
+    TopLeft,
+    TopCenter,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RecordTiming {
+    Real,
+    Fixed,
+    None,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings {
+            master_hotkey: Hotkey { input: 0x91, mods: 0 },
+            panic_hotkey: Hotkey { input: 0x13, mods: 0 },
+            timing: TimingMode::Precise,
+            armed_on_launch: true,
+            ignore_foreign_injected: true,
+            hud: true,
+            hud_position: HudPosition::TopCenter,
+            sounds: true,
+            close_to_tray: true,
+            start_minimized: false,
+            start_with_windows: false,
+            accent: "violet".into(),
+            record_timing: RecordTiming::Real,
+            record_fixed_delay_ms: 30.0,
+            record_mouse_moves: false,
+            seen_welcome: false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------- limits ----
+
+pub const MAX_RATE: f64 = 1000.0;
+pub const MIN_RATE: f64 = 0.1;
+pub const MAX_HOLD_MS: f64 = 60_000.0;
+pub const MAX_DELAY_MS: f64 = 3_600_000.0;
+pub const MAX_STEPS: usize = 20_000;
+pub const MAX_TEXT: usize = 4_000;
+pub const MAX_REPEAT: u32 = 100_000;
+pub const MAX_MOVE: i32 = 32_000;
+
+fn clamp_f(v: f64, lo: f64, hi: f64, fallback: f64) -> f64 {
+    if v.is_finite() {
+        v.clamp(lo, hi)
+    } else {
+        fallback
+    }
+}
+
+fn clean_name(s: &str, fallback: &str, max: usize) -> String {
+    let t: String = s.chars().filter(|c| !c.is_control()).take(max).collect();
+    let t = t.trim();
+    if t.is_empty() {
+        fallback.to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+fn clean_id(s: &str) -> Option<String> {
+    let t: String = s.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').take(64).collect();
+    (!t.is_empty()).then_some(t)
+}
+
+impl Step {
+    pub fn sanitize(&mut self) -> bool {
+        match self {
+            Step::Press { input, hold_ms } => {
+                *hold_ms = clamp_f(*hold_ms, 0.0, MAX_HOLD_MS, 15.0);
+                input::is_valid(*input)
+            }
+            Step::Down { input } | Step::Up { input } => input::is_valid(*input) && !input::is_wheel(*input),
+            Step::Wheel { delta, .. } => {
+                *delta = (*delta).clamp(-100, 100);
+                *delta != 0
+            }
+            Step::Move { dx, dy, duration_ms } => {
+                *dx = (*dx).clamp(-MAX_MOVE, MAX_MOVE);
+                *dy = (*dy).clamp(-MAX_MOVE, MAX_MOVE);
+                *duration_ms = clamp_f(*duration_ms, 0.0, MAX_HOLD_MS, 0.0);
+                true
+            }
+            Step::MoveTo { x, y } => {
+                *x = (*x).clamp(-MAX_MOVE, MAX_MOVE);
+                *y = (*y).clamp(-MAX_MOVE, MAX_MOVE);
+                true
+            }
+            Step::Delay { ms, jitter_ms } => {
+                *ms = clamp_f(*ms, 0.0, MAX_DELAY_MS, 0.0);
+                *jitter_ms = clamp_f(*jitter_ms, 0.0, *ms, 0.0);
+                true
+            }
+            Step::Text { text, char_delay_ms } => {
+                *text = text.chars().filter(|c| *c == '\n' || *c == '\t' || !c.is_control()).take(MAX_TEXT).collect();
+                *char_delay_ms = clamp_f(*char_delay_ms, 0.0, 10_000.0, 10.0);
+                !text.is_empty()
+            }
+        }
+    }
+}
+
+impl Action {
+    pub fn sanitize(&mut self) -> bool {
+        match self {
+            Action::Macro { macro_id, repeat, .. } => {
+                *repeat = (*repeat).clamp(1, MAX_REPEAT);
+                match clean_id(macro_id) {
+                    Some(id) => {
+                        *macro_id = id;
+                        true
+                    }
+                    None => false,
+                }
+            }
+            Action::Rapid { output, rate, hold_ms, jitter_pct } => {
+                *rate = clamp_f(*rate, MIN_RATE, MAX_RATE, 10.0);
+                *hold_ms = clamp_f(*hold_ms, 0.0, MAX_HOLD_MS, 15.0);
+                *jitter_pct = clamp_f(*jitter_pct, 0.0, 50.0, 0.0);
+                input::is_valid(*output)
+            }
+            Action::Remap { output, mods } => {
+                *mods &= MOD_ALL;
+                input::is_valid(*output)
+            }
+            Action::HoldLock { output } => input::is_valid(*output) && !input::is_wheel(*output),
+            Action::Block => true,
+        }
+    }
+}
+
+impl Hotkey {
+    fn sanitize(&mut self) {
+        if !input::is_valid(self.input) {
+            self.input = 0;
+        }
+        self.mods &= MOD_ALL;
+    }
+}
+
+impl Data {
+    /// Clamp everything into range and drop what cannot run. Returns how many
+    /// items were dropped, so the caller can log it.
+    pub fn sanitize(&mut self) -> usize {
+        let mut dropped = 0;
+        self.version = DATA_VERSION;
+
+        let mut seen = std::collections::HashSet::new();
+        self.macros.retain_mut(|m| {
+            let Some(id) = clean_id(&m.id).filter(|id| seen.insert(id.clone())) else {
+                dropped += 1;
+                return false;
+            };
+            m.id = id;
+            m.name = clean_name(&m.name, "Macro", 60);
+            let before = m.steps.len();
+            m.steps.truncate(MAX_STEPS);
+            m.steps.retain_mut(Step::sanitize);
+            dropped += before - m.steps.len();
+            true
+        });
+
+        let mut seen = std::collections::HashSet::new();
+        self.profiles.retain_mut(|p| {
+            let Some(id) = clean_id(&p.id).filter(|id| seen.insert(id.clone())) else {
+                dropped += 1;
+                return false;
+            };
+            p.id = id;
+            p.name = clean_name(&p.name, "Profile", 40);
+            p.apps = p
+                .apps
+                .iter()
+                .map(|a| a.trim().to_ascii_lowercase())
+                .filter(|a| !a.is_empty() && a.len() <= 260 && !a.contains(['/', '\\']))
+                .take(64)
+                .collect();
+            p.apps.dedup();
+            let mut ids = std::collections::HashSet::new();
+            let before = p.bindings.len();
+            p.bindings.truncate(500);
+            p.bindings.retain_mut(|b| {
+                let Some(id) = clean_id(&b.id).filter(|id| ids.insert(id.clone())) else { return false };
+                b.id = id;
+                b.name = clean_name(&b.name, "", 60);
+                b.trigger.mods &= MOD_ALL;
+                // A trigger can be unset while the user is still building it;
+                // it is kept (and simply never fires) so their work is not lost.
+                if !input::is_valid(b.trigger.input) {
+                    b.trigger.input = 0;
+                }
+                b.action.sanitize()
+            });
+            dropped += before - p.bindings.len();
+            true
+        });
+        if self.profiles.is_empty() {
+            self.profiles.push(Profile::global());
+        }
+
+        let s = &mut self.settings;
+        s.master_hotkey.sanitize();
+        s.panic_hotkey.sanitize();
+        s.record_fixed_delay_ms = clamp_f(s.record_fixed_delay_ms, 0.0, 10_000.0, 30.0);
+        if !["violet", "blue", "teal", "green", "amber", "pink"].contains(&s.accent.as_str()) {
+            s.accent = "violet".into();
+        }
+        dropped
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_round_trips() {
+        let d = Data::default();
+        let json = serde_json::to_string(&d).unwrap();
+        let back: Data = serde_json::from_str(&json).unwrap();
+        assert_eq!(d, back);
+    }
+
+    #[test]
+    fn action_json_shape_matches_ui() {
+        let a = Action::Rapid { output: 256, rate: 12.0, hold_ms: 10.0, jitter_pct: 5.0 };
+        let v = serde_json::to_value(&a).unwrap();
+        assert_eq!(v["type"], "rapid");
+        assert_eq!(v["holdMs"], 10.0);
+        let s: Step = serde_json::from_str(r#"{"type":"delay","ms":20,"jitterMs":5}"#).unwrap();
+        assert_eq!(s, Step::Delay { ms: 20.0, jitter_ms: 5.0 });
+        let m: Action = serde_json::from_str(r#"{"type":"macro","macroId":"m1"}"#).unwrap();
+        assert!(matches!(m, Action::Macro { repeat: 1, stop_immediately: true, .. }));
+    }
+
+    #[test]
+    fn sanitize_clamps_and_drops() {
+        let mut d = Data::default();
+        d.profiles[0].bindings.push(Binding {
+            id: "b1".into(),
+            trigger: Trigger { input: 0x41, ..Default::default() },
+            action: Action::Rapid { output: 256, rate: f64::NAN, hold_ms: 1e12, jitter_pct: 400.0 },
+            ..Default::default()
+        });
+        d.profiles[0].bindings.push(Binding {
+            id: "b2".into(),
+            action: Action::Remap { output: 9999, mods: 0 },
+            ..Default::default()
+        });
+        d.profiles[0].apps = vec!["  CS2.exe ".into(), "..\\evil".into()];
+        d.macros.push(Macro {
+            id: "m".into(),
+            steps: vec![Step::Delay { ms: -5.0, jitter_ms: 9.0 }, Step::Wheel { delta: 0, horizontal: false }],
+            ..Default::default()
+        });
+        let dropped = d.sanitize();
+        assert_eq!(dropped, 2);
+        let b = &d.profiles[0].bindings[0];
+        assert_eq!(b.action, Action::Rapid { output: 256, rate: 10.0, hold_ms: MAX_HOLD_MS, jitter_pct: 50.0 });
+        assert_eq!(d.profiles[0].apps, vec!["cs2.exe"]);
+        assert_eq!(d.macros[0].steps, vec![Step::Delay { ms: 0.0, jitter_ms: 0.0 }]);
+    }
+
+    #[test]
+    fn corrupt_fields_fall_back_to_defaults() {
+        let d: Data = serde_json::from_str(r#"{"settings":{"timing":"efficient"}}"#).unwrap();
+        assert_eq!(d.settings.timing, TimingMode::Efficient);
+        assert_eq!(d.settings.master_hotkey.input, 0x91);
+    }
+}

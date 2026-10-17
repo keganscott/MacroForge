@@ -1,0 +1,30 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main",
+  "description": "Main window: core defaults plus the MacroForge command list. No fs, shell, http or opener plugins.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-snapshot",
+    "allow-save-data",
+    "allow-set-armed",
+    "allow-panic-stop",
+    "allow-capture-input",
+    "allow-cancel-capture",
+    "allow-record-start",
+    "allow-record-stop",
+    "allow-play-steps",
+    "allow-stop-run",
+    "allow-set-monitor",
+    "allow-get-status",
+    "allow-get-stats",
+    "allow-reset-stats",
+    "allow-run-benchmark",
+    "allow-list-apps",
+    "allow-relaunch-admin",
+    "allow-open-data-dir",
+    "allow-preview-hud"
+  ]
+}

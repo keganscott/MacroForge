@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-panic-stop"
+description = "Enables the panic_stop command without any pre-configured scope."
+commands.allow = ["panic_stop"]
+
+[[permission]]
+identifier = "deny-panic-stop"
+description = "Denies the panic_stop command without any pre-configured scope."
+commands.deny = ["panic_stop"]
