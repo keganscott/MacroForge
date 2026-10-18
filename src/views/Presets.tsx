@@ -1,20 +1,14 @@
-// Game presets: rules first, the game's own settings second, bindings third.
+// Game presets: the game's own settings first, then ready-made bindings.
 
 import { useState } from "react";
-import { ArrowRight, BookOpen, Check, Gamepad2, Globe, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
+import { ArrowRight, BookOpen, Check, Gamepad2, Globe } from "lucide-react";
 
 import { useNavigate } from "../components/Shell";
-import { Button, Callout, Card, cx, Eyebrow, Keycap, PageHeader, SectionTitle, StatusBadge } from "../components/ui";
+import { Button, Callout, Card, cx, Eyebrow, Keycap, PageHeader, SectionTitle } from "../components/ui";
 import { actionSummary, ACTION_TEXT, MODE_TEXT, newId } from "../lib/describe";
-import { GAME_PRESETS, type GamePreset, type RulesLevel } from "../lib/presets";
+import { GAME_PRESETS, type GamePreset } from "../lib/presets";
 import type { Binding, Data, Macro } from "../lib/types";
 import { toast, update, useStore } from "../store";
-
-export const RULES_BADGE: Record<RulesLevel, { tone: "ok" | "bad" | "warn"; label: string; Icon: typeof ShieldCheck }> = {
-  incompatible: { tone: "bad", label: "Quit MacroForge before playing", Icon: ShieldX },
-  forbidden: { tone: "bad", label: "Rules ban macros", Icon: ShieldAlert },
-  yours: { tone: "ok", label: "Your call", Icon: ShieldCheck },
-};
 
 /** Add the chosen items of a preset; returns [added, skipped as already bound]. */
 function install(game: GamePreset, chosen: Set<string>): { profileId: string; added: number; skipped: number } {
@@ -68,12 +62,11 @@ export function PresetsView() {
     <>
       <PageHeader
         title="Game presets"
-        description="Ready-made setups for popular games. Each one says plainly what the game’s rules allow, what to set in the game itself first, and only then what MacroForge can add."
+        description="Ready-made setups for popular games: what to set in the game itself, then bindings you can add in one click."
       />
       <div className="grid grid-cols-[260px_1fr] gap-6">
         <div className="flex flex-col gap-2">
           {GAME_PRESETS.map((g) => {
-            const r = RULES_BADGE[g.rules.level];
             return (
               <button
                 key={g.id}
@@ -90,9 +83,7 @@ export function PresetsView() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold">{g.name}</span>
-                  <span className={cx("flex items-center gap-1 text-xs", r.tone === "ok" ? "text-ink-muted" : "text-bad")}>
-                    <r.Icon aria-hidden className="size-3.5" /> {r.label}
-                  </span>
+                  <span className="block truncate text-xs text-ink-muted">{g.tagline}</span>
                 </span>
               </button>
             );
@@ -108,7 +99,6 @@ function GameDetail({ game }: { game: GamePreset }) {
   const navigate = useNavigate();
   const profiles = useStore((s) => s.data!.profiles);
   const [chosen, setChosen] = useState(() => new Set(game.items.filter((i) => i.defaultOn).map((i) => i.key)));
-  const r = RULES_BADGE[game.rules.level];
   const existing = game.apps.length ? profiles.find((p) => p.apps.some((a) => game.apps.includes(a))) : profiles.find((p) => p.id === "global");
   const toggle = (k: string) =>
     setChosen((c) => {
@@ -141,17 +131,6 @@ function GameDetail({ game }: { game: GamePreset }) {
               </p>
             )}
           </div>
-          <StatusBadge tone={r.tone}>{r.label}</StatusBadge>
-        </div>
-        <div className="mt-4">
-          <Callout tone={game.rules.level === "yours" ? "info" : "bad"} title={game.rules.level === "yours" ? "What the rules say" : "Read this first"}>
-            <p>{game.rules.summary}</p>
-            {game.rules.source.url && (
-              <p className="mt-2 text-xs">
-                Source: {game.rules.source.label} · <span className="font-mono break-all select-all">{game.rules.source.url}</span>
-              </p>
-            )}
-          </Callout>
         </div>
       </Card>
 
@@ -197,11 +176,6 @@ function GameDetail({ game }: { game: GamePreset }) {
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-bold">{i.title}</span>
-                        {i.tier === "safe" ? (
-                          <StatusBadge tone="info" icon={false}>Sends nothing to the game</StatusBadge>
-                        ) : (
-                          <StatusBadge tone="neutral" icon={false}>Sends input</StatusBadge>
-                        )}
                       </span>
                       <span className="mt-1 block text-xs text-ink-muted">{i.why}</span>
                       <span className="mt-1.5 block text-[11px] text-ink-faint">
@@ -226,8 +200,8 @@ function GameDetail({ game }: { game: GamePreset }) {
           </div>
         </>
       ) : (
-        <Callout tone="info" title="No MacroForge bindings for this game">
-          The safest setup is the game’s own settings above, with MacroForge closed while you play.
+        <Callout tone="info" title="No ready-made bindings for this game yet">
+          Use Quick tools or Bindings to set up your own.
         </Callout>
       )}
     </div>

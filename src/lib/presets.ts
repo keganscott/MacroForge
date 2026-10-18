@@ -1,33 +1,16 @@
-// Game presets. Each game says what its rules say about macros (with the
-// source), what to set in the game itself first, and offers bindings in
-// tiers:
-//   safe  - nothing is sent to the game (e.g. the Windows key does nothing)
-//   input - MacroForge sends keys / clicks to the game
-// Keybinds are each game's PC defaults as published (sources below); if you
-// changed yours in-game, change the binding's output to match.
-//
-// Checked 2026-10-17. Rules change: re-check the source before relying on it.
+// Game presets: what to set in the game itself, then ready-made bindings.
+// Keybinds are each game's PC defaults as published; if you changed yours
+// in-game, change the binding's output to match.
 
 import { MOUSE_LEFT, MOUSE_RIGHT, MOUSE_X1, MOUSE_X2 } from "./keys";
 import type { Action, Macro, TriggerMode } from "./types";
-
-/** incompatible: the game's anti-cheat flags macro tools that are merely running.
- * forbidden: the rules ban macros. yours: up to you (single-player, your world). */
-export type RulesLevel = "incompatible" | "forbidden" | "yours";
-
-export interface GameRules {
-  level: RulesLevel;
-  /** One line, in plain words. */
-  summary: string;
-  source: { label: string; url: string };
-}
 
 export interface PresetItem {
   key: string;
   title: string;
   why: string;
   tier: "safe" | "input";
-  /** Ticked when the preset opens. Only safe items, unless the game's rules are the player's own call. */
+  /** Ticked when the preset opens. */
   defaultOn: boolean;
   trigger: { input: number; mods?: number; mode?: TriggerMode };
   action: Action;
@@ -40,7 +23,6 @@ export interface GamePreset {
   name: string;
   tagline: string;
   apps: string[];
-  rules: GameRules;
   /** Settings in the game itself that do the job better than a macro. */
   gameSettings: string[];
   items: PresetItem[];
@@ -74,12 +56,6 @@ export const GAME_PRESETS: GamePreset[] = [
     name: "ARC Raiders",
     tagline: "Extraction shooter by Embark Studios",
     apps: ["pioneergame.exe"],
-    rules: {
-      level: "incompatible",
-      summary:
-        "ARC Raiders’ anti-cheat flags AutoHotkey, auto-clickers and macro tools while they are running, whether or not they send anything. Quit MacroForge (tray icon › Quit) before you launch it, and use the game’s own settings below instead.",
-      source: { label: "Embark Help Center: “Cheat software detected”", url: "https://id.embark.games/arc-raiders/support/faq/163-fatal-error-cheat-software-detected" },
-    },
     gameSettings: [
       "Settings › Controls: bind “Aim (Toggle)”. It is unassigned by default, and is the built-in way to aim without holding right-click.",
       "Settings › Controls: bind “Sprint (Toggle)”, also unassigned by default, for long topside runs without holding Left Shift.",
@@ -87,7 +63,18 @@ export const GAME_PRESETS: GamePreset[] = [
       "Ping defaults to Middle Mouse; you can move it to a side button in Settings › Controls.",
       "Settings › Audio: proximity chat defaults to push-to-talk on B, party chat to open mic.",
     ],
-    items: [],
+    items: [
+      ...blockWin,
+      {
+        key: "autorun",
+        title: "Auto-run on Mouse 5",
+        why: "Press Mouse 5 to keep W held for long topside runs; press again (or Stop all) to let go. ARC Raiders has no auto-run of its own.",
+        tier: "input",
+        defaultOn: false,
+        trigger: { input: MOUSE_X2 },
+        action: { type: "holdLock", output: 0x57 },
+      },
+    ],
     keybindSource: { label: "arcraiders.wiki: Settings", url: "https://arcraiders.wiki/wiki/Settings" },
   },
   {
@@ -95,30 +82,18 @@ export const GAME_PRESETS: GamePreset[] = [
     name: "Fortnite",
     tagline: "Battle royale by Epic Games",
     apps: ["fortniteclient-win64-shipping.exe"],
-    rules: {
-      level: "forbidden",
-      summary:
-        "Epic treats macros as cheating, defined as one key doing a sequence of actions, and bans for it. It also removed double-movement binds for the same reason. Epic hasn’t published which running tools its anti-cheat flags. This preset only stops the Windows key and sends nothing to Fortnite; quitting MacroForge before you play is the safest choice.",
-      source: { label: "Epic: Competitive integrity update (Dec 2020)", url: "https://www.fortnite.com/news/fortnite-chapter-2-season-5-competitive-integrity-update" },
-    },
     gameSettings: [
-      "Settings › Input: rebind anything you like there, including build pieces on mouse side buttons. That is the game’s own system and is allowed.",
+      "Settings › Input: rebind anything you like there, including build pieces on mouse side buttons.",
       "Settings › Game: “Edit Hold Time” and “Edit on Release” make editing feel faster without any macro.",
       "Settings › Game: “Toggle Targeting” lets you aim without holding right-click.",
     ],
-    items: blockWin.map((i) => ({ ...i, defaultOn: false })),
+    items: [...blockWin],
   },
   {
     id: "minecraft",
     name: "Minecraft",
     tagline: "Java and Bedrock, single-player and your own worlds",
     apps: ["javaw.exe", "minecraft.windows.exe"],
-    rules: {
-      level: "yours",
-      summary:
-        "In single-player and on your own worlds it is your call. Multiplayer servers set their own rules and many ban auto-clickers, so check before using these on a server. (javaw.exe is shared by every Java app, so this profile is also active in other Java programs.)",
-      source: { label: "Each server publishes its own rules", url: "" },
-    },
     gameSettings: [
       "Java: press F3 + P so the game keeps running when you alt-tab. Otherwise AFK farms pause the moment it loses focus.",
       "Java: Options › Controls lets you set Sprint to Toggle instead of holding Ctrl.",
@@ -178,12 +153,6 @@ export const GAME_PRESETS: GamePreset[] = [
     name: "Stardew Valley",
     tagline: "Farming, mining and fishing, solo or co-op",
     apps: ["stardew valley.exe", "stardewmoddingapi.exe"],
-    rules: {
-      level: "yours",
-      summary:
-        "Single-player and co-op with friends, with no anti-cheat: your call. Animation cancelling (Right Shift + R + Delete right after a tool lands) is a long-standing PC technique; these presets just time it for you.",
-      source: { label: "Stardew forums: animation canceling script (timings)", url: "https://forums.stardewvalley.net/threads/a-better-animation-canceling-autohotkey-script.7391" },
-    },
     gameSettings: [
       "Keep the game’s default keys for this: the cancel uses Right Shift, R and Delete, and the tool uses left-click.",
       "The timings assume 60 FPS. If your game runs faster or slower, nudge the wait in Macros (the 83 ms step).",
@@ -248,12 +217,6 @@ export const GAME_PRESETS: GamePreset[] = [
     name: "Any game",
     tagline: "Essentials for every game",
     apps: [],
-    rules: {
-      level: "yours",
-      summary:
-        "The key blockers only stop keys from doing things; nothing is sent to the game. The auto-clicker does send input, so it is off until you tick it: keep it to games that allow it, and quit MacroForge before playing games whose anti-cheat flags macro tools (see ARC Raiders).",
-      source: { label: "Check each game’s own rules", url: "" },
-    },
     gameSettings: [],
     items: [
       ...blockWin,
@@ -269,7 +232,7 @@ export const GAME_PRESETS: GamePreset[] = [
       {
         key: "clicker",
         title: "Clicker-game auto-clicker on F6",
-        why: "Toggles left-click at 20 per second for idle and clicker games. Sends input, so keep it out of games whose rules forbid it.",
+        why: "Toggles left-click at 20 per second for idle and clicker games.",
         tier: "input",
         defaultOn: false,
         trigger: { input: 0x75, mode: "toggle" },
@@ -278,14 +241,6 @@ export const GAME_PRESETS: GamePreset[] = [
     ],
   },
 ];
-
-/** Rules for an app (lower-case exe), if MacroForge knows the game. */
-export function rulesFor(apps: string[]): { game: GamePreset; rules: GameRules } | null {
-  for (const g of GAME_PRESETS) {
-    if (g.apps.some((a) => apps.includes(a))) return { game: g, rules: g.rules };
-  }
-  return null;
-}
 
 /** Does this action send input to the game? (Block does not.) */
 export const sendsInput = (a: Action) => a.type !== "block";

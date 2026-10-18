@@ -26,7 +26,6 @@ export function Welcome() {
         <Item icon={<Power aria-hidden className="size-4" />} title="Always in control">
           {comboName(s.masterHotkey.input, s.masterHotkey.mods)} turns everything on or off; {comboName(s.panicHotkey.input, s.panicHotkey.mods)} stops everything instantly. Bindings pause while this window is in front.
         </Item>
-        <p className="text-xs text-ink-muted">Only use macros in games that allow them.</p>
       </div>
     </Dialog>
   );

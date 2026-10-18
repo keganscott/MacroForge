@@ -189,9 +189,6 @@ export function SettingsView() {
                 <p>
                   It watches keys through Windows' standard input hooks and sends input with <span className="font-mono text-ink">SendInput</span>, the same documented way on-screen keyboards do. No driver, nothing injected into any game, nothing hidden, no network access.
                 </p>
-                <p>
-                  Use it in games whose rules allow macros. Some games and anti-cheat systems forbid automated input in all or some modes; MacroForge does not try to get around that, and its input is marked as synthetic by Windows like any other program's.
-                </p>
                 <p className="text-xs">
                   Version {version}
                   {elevated ? " · running as administrator" : ""}

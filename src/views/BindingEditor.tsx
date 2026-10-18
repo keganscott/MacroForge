@@ -10,7 +10,6 @@ import { KeyField } from "../components/KeyField";
 import { useNavigate } from "../components/Shell";
 import { Button, Callout, cx, Dialog, Field, NumberField, Segmented, Select, Slider, Switch, TextInput } from "../components/ui";
 import { ACTION_TEXT, conflicts, fmtRate, MODE_TEXT, newId } from "../lib/describe";
-import { rulesFor } from "../lib/presets";
 import { comboName, keyName, MOUSE_LEFT } from "../lib/keys";
 import { NO_CONDITIONS, type Action, type ActionType, type Binding, type Conditions, type Data, type Macro, type TriggerMode } from "../lib/types";
 import { toast, update, useStore } from "../store";
@@ -83,7 +82,6 @@ export function BindingEditor({
   }, [open, initial, profileId]);
 
   const profile = data.profiles.find((p) => p.id === pid) ?? data.profiles[0]!;
-  const gameRules = rulesFor(profile.apps);
   const clash = conflicts(profile, b);
   const s = data.settings;
   const hotkeyClash =
@@ -283,12 +281,6 @@ export function BindingEditor({
               </p>
             )}
           </section>
-        )}
-
-        {gameRules && gameRules.rules.level !== "yours" && b.action.type !== "block" && (
-          <Callout tone="bad" title={gameRules.rules.level === "incompatible" ? `${gameRules.game.name} flags macro tools that are running` : `${gameRules.game.name}’s rules ban macros`}>
-            {gameRules.rules.summary}
-          </Callout>
         )}
 
         {/* ------------------------------------------------ name, profile */}
