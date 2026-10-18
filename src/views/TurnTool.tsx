@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { MousePointer2, Play, RotateCw, Save, Target } from "lucide-react";
 
 import { KeyField, type KeyValue } from "../components/KeyField";
-import { Button, Card, cx, Field, NumberField, Segmented, StatusBadge, Switch } from "../components/ui";
+import { AddSpec, Builder, NO_KEY, OnOffKeyStep } from "../components/Builder";
+import { Button, cx, Field, NumberField, Segmented, StatusBadge, Switch } from "../components/ui";
 import { newId } from "../lib/describe";
 import { keyName, MOUSE_X1, MOUSE_X2 } from "../lib/keys";
 import {
@@ -24,16 +25,15 @@ import {
   yawFromCalibration,
   type TurnSpeed,
 } from "../lib/turn";
-import type { Action, Conditions, Macro, Trigger } from "../lib/types";
+import type { Macro } from "../lib/types";
 import { backend, setSettings, toast, useStore } from "../store";
 
-type AddFn = (name: string, trigger: Partial<Trigger> & { input: number }, action: Action, macro?: Macro, conditions?: Conditions) => void;
 
 const round = (n: number, digits = 3) => Number(n.toFixed(digits));
 const shortName = (name: string) => name.replace(/ \(.*\)$/, "").replace(/ \/.*$/, "");
 const NO_CALIBRATIONS: { game: string; yaw: number }[] = [];
 
-export function TurnTool({ onAdd }: { onAdd: AddFn }) {
+export function TurnTool({ onAdd, profileName, onOpenBindings }: { onAdd: (spec: AddSpec) => void; profileName: string; onOpenBindings: () => void }) {
   const saved = useStore((st) => st.data?.settings.turnCalibrations ?? NO_CALIBRATIONS);
   const [gameId, setGameId] = useState("cs2");
   const game = TURN_GAMES.find((g) => g.id === gameId)!;
@@ -52,6 +52,7 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
   const [speed, setSpeed] = useState<TurnSpeed>("snap");
   const [key, setKey] = useState<KeyValue>({ input: MOUSE_X1, mods: 0 });
   const [pauseMenus, setPauseMenus] = useState(true);
+  const [onOff, setOnOff] = useState<KeyValue>(NO_KEY);
   const [countdown, setCountdown] = useState<{ n: number; what: string } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -104,13 +105,14 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
   const add = () => {
     const label = effSens > 0 ? `${shortName(game.name)}, sens ${round(effSens)}` : `${counts} counts`;
     const m: Macro = { id: newId("m"), name: `180° turn (${label})`, steps: turnSteps(counts, right, speed) };
-    onAdd(
-      "180° turn",
-      { input: key.input, mods: key.mods, mode: "press" },
-      { type: "macro", macroId: m.id, repeat: 1, onRepress: "ignore", stopImmediately: true },
-      m,
-      { whileHeld: 0, pauseInMenus: pauseMenus },
-    );
+    onAdd({
+      name: "180° turn",
+      trigger: { input: key.input, mods: key.mods, mode: "press" },
+      action: { type: "macro", macroId: m.id, repeat: 1, onRepress: "ignore", stopImmediately: true },
+      macro: m,
+      conditions: { whileHeld: 0, pauseInMenus: pauseMenus },
+      toggleKey: onOff,
+    });
   };
 
   const err = errorDegrees(perCount, counts);
@@ -121,22 +123,21 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
   const cm = cmPer360(usedPerCount, dpi);
 
   return (
-    <Card className="xl:col-span-2">
-      <div className="mb-5 flex items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet text-on-accent">
-          <RotateCw aria-hidden className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-2 text-base font-extrabold tracking-tight">
-            Perfect 180
-            <span className="rounded-md border border-violet/40 bg-violet/10 px-1.5 py-px text-[10px] font-bold tracking-wider text-violet-soft uppercase">New</span>
-          </h2>
-          <p className="text-xs text-ink-muted">
-            One button turns you around exactly 180°, worked out from your game and sensitivity (or eDPI). The same idea as Razer’s Perfect 180, on any mouse.
-          </p>
-        </div>
-      </div>
-
+    <Builder
+      icon={<RotateCw aria-hidden className="size-6" />}
+      title="Perfect 180"
+      blurb="One button turns you around exactly 180°, worked out from your game and sensitivity (or eDPI). The same idea as Razer’s Perfect 180, on any mouse."
+      addLabel="Add Perfect 180"
+      canAdd={!!key.input}
+      summary={
+        <>
+          <span className="font-bold text-ink">{keyName(key.input)}</span> turns {right ? "right" : "left"} <span className="font-bold text-ink">{counts.toLocaleString()}</span> counts, {speedInfo.label.toLowerCase()}
+        </>
+      }
+      onAdd={add}
+      profileName={profileName}
+      onOpenBindings={onOpenBindings}
+    >
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_1fr]">
         {/* ---------------------------------------------- calculator */}
         <div className="flex flex-col gap-5">
@@ -353,17 +354,10 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
             <Switch label="Pause in menus" checked={pauseMenus} onChange={setPauseMenus} />
           </div>
 
-          <div className="mt-auto flex items-center justify-end gap-3 border-t border-line pt-4">
-            <span className="mr-auto text-xs text-ink-muted">
-              {keyName(key.input)} → turn {right ? "right" : "left"} {counts.toLocaleString()} counts, {speedInfo.label.toLowerCase()}
-            </span>
-            <Button variant="primary" disabled={!key.input} onClick={add}>
-              Add Perfect 180
-            </Button>
-          </div>
         </div>
       </div>
-    </Card>
+      <OnOffKeyStep value={onOff} onChange={setOnOff} trigger={key.input} />
+    </Builder>
   );
 }
 

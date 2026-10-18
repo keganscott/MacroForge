@@ -4,7 +4,8 @@ Keyboard and mouse macro app for Windows (Tauri 2 shell, Rust engine, React/TS/T
 
 ## Rules
 - Never call something done without running it: `cargo test -p macroforge-engine`, `npm test`, `npm run typecheck`, then build.
-- Fair play, as in Crosshair Forge: documented APIs only (hooks + SendInput). No drivers, no injection into games, no hiding, no anti-cheat evasion, no network. Copy must not suggest otherwise.
+- Documented APIs only (hooks + SendInput). No drivers, no injection into games, no network.
+- No game-rules or fair-play messaging in the app or docs (Kegan's call, 2026-10-18).
 - No efficacy claims in copy. Performance shows measured numbers only.
 - SAMPLE mock (`src/lib/mock.ts`) only in `vite dev`, always labelled; never in a release bundle (`ipc.ts` gates it on `import.meta.env.DEV`).
 

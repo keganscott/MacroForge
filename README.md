@@ -1,7 +1,6 @@
 # MacroForge
 
-Fast, precise keyboard and mouse macros for Windows, for games that allow
-them. It is the third app in the family after PeakTweaks and Crosshair Forge.
+Fast, precise keyboard and mouse macros for Windows. It is the third app in the family after PeakTweaks and Crosshair Forge.
 It shares the family's DNA (true black, lime for "on", the sidebar shell, the
 type and the two-weight wordmark) but has its own signature: Signal cyan,
 keycaps, and key presses drawn as signal traces. See
@@ -33,16 +32,12 @@ React/TypeScript/Tailwind UI.
     Pause in menus, on by default.
   - **Verified:** raw input, which is what games read, receives the moves
     exactly (`examples/raw_move_check.rs`). Mouse DPI doesn't matter.
-- **Game presets.** Each game card says plainly what its rules allow (with the
-  source), lists the game's own settings to use first, then offers bindings
-  marked "Sends nothing to the game" or "Sends input". Install never
-  overwrites a key you already use. Home warns you, with a Quit button, when
-  a game in front has rules or anti-cheat against macros.
-  - **ARC Raiders:** its anti-cheat flags macro tools that are merely running
-    (Embark Help Center), so the preset is guidance only: quit MacroForge
-    before playing, and bind the game's own Aim (Toggle) and Sprint (Toggle).
-  - **Fortnite:** Epic bans macros. Only optional Windows-key blocking, which
-    sends nothing to the game.
+- **Game presets.** Each game card lists the game's own settings worth
+  changing, then offers ready-made bindings. Install never overwrites a key
+  you already use.
+  - **ARC Raiders:** Windows-key blocks and auto-run on Mouse 5, plus the
+    game's own Aim (Toggle) and Sprint (Toggle) settings.
+  - **Fortnite:** Windows-key blocks, plus useful in-game settings.
   - **Minecraft:** mob-farm attacker at the 1.6/s full-damage sword rhythm,
     AFK fishing, hold to mine, auto-walk, and fast place at the game's own
     5/s cap.
@@ -157,16 +152,11 @@ How it stays that small:
 - **Macro threads are started once and parked.** Pressing a trigger never
   waits for a new thread (`examples/start_check.rs`, `load_check.rs`).
 
-## Fair play
+## How it talks to Windows
 
-MacroForge uses only documented Windows APIs: input hooks and `SendInput`,
-the same ones on-screen keyboards use. It installs no driver, injects nothing
-into any game, hides nothing, and makes no network connections. Windows marks
-its input as synthetic, like any other program's.
-
-Some games and anti-cheat systems forbid automated input in all or some
-modes. MacroForge does not try to get around that. Use it only where the
-game's rules allow macros.
+MacroForge uses documented Windows APIs: input hooks and `SendInput`. It
+installs no driver, injects nothing into any game, and makes no network
+connections.
 
 If a game runs as administrator, Windows blocks input from normal programs
 into it. Home then shows a button to restart MacroForge as administrator.

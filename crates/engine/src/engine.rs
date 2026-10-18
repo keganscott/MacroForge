@@ -22,7 +22,7 @@ use crate::input::{self, Input};
 use crate::model::{Conditions, Data, Step, TimingMode, TriggerMode};
 use crate::recorder::{self, RecEv};
 use crate::runner::{self, Ctx, Loop, Output};
-use crate::table::{compile, Bound, Compiled, Table};
+use crate::table::{compile_with, Bound, Compiled, Table};
 use crate::timing::{now_ms, Cancel, Rng, Waiter};
 
 /// What the platform layer provides.
@@ -93,6 +93,8 @@ pub struct Status {
     pub self_elevated: bool,
     /// Bindings are paused while MacroForge's own window is in front.
     pub paused_own_window: bool,
+    /// Bindings switched off with their own toggle key (this session).
+    pub muted: Vec<String>,
     pub active_profiles: Vec<String>,
     pub live_bindings: usize,
     pub running: Vec<RunInfo>,
@@ -284,6 +286,7 @@ impl Engine {
             remaps: HashMap::new(),
             next_run: 1,
             capture: None,
+            muted: std::collections::HashSet::new(),
             recording: None,
             monitor: false,
             monitor_buf: Vec::new(),
@@ -436,6 +439,7 @@ struct Core {
     remaps: HashMap<Arc<str>, (Input, u8)>,
     next_run: u64,
     capture: Option<Sender<(Input, u8)>>,
+    muted: std::collections::HashSet<String>,
     recording: Option<Vec<(f64, RecEv)>>,
     monitor: bool,
     monitor_buf: Vec<MonitorEvent>,
@@ -478,7 +482,11 @@ impl Core {
     /// stop anything that no longer applies (e.g. a toggle when you alt-tab
     /// out of its game).
     fn rebuild(&mut self) {
-        let table = if self.fg.own { Table::empty() } else { compile(&self.data, self.fg.exe.as_deref()) };
+        // Forget toggled-off bindings that no longer exist.
+        let ids: std::collections::HashSet<&str> =
+            self.data.profiles.iter().flat_map(|p| p.bindings.iter().map(|b| b.id.as_str())).collect();
+        self.muted.retain(|id| ids.contains(id.as_str()));
+        let table = if self.fg.own { Table::empty() } else { compile_with(&self.data, self.fg.exe.as_deref(), &self.muted) };
         let table = Arc::new(table);
         *self.shared.table.write() = table.clone();
         self.table = table;
@@ -519,6 +527,11 @@ impl Core {
             foreground_elevated: self.fg.elevated,
             self_elevated: self.platform.self_elevated(),
             paused_own_window: self.fg.own,
+            muted: {
+                let mut m: Vec<String> = self.muted.iter().cloned().collect();
+                m.sort();
+                m
+            },
             active_profiles: self.table.active_profiles.clone(),
             live_bindings: self.table.bindings.len(),
             running,
@@ -607,6 +620,19 @@ impl Core {
         }
     }
 
+    /// A binding's own toggle key: off (stopping anything it is doing) or
+    /// back on. Lasts until pressed again or MacroForge restarts.
+    fn toggle_binding(&mut self, id: &str) {
+        let label = self.table.toggles.iter().find(|t| &*t.id == id).map(|t| t.label.clone()).unwrap_or_default();
+        // Off -> on if it was toggled off, otherwise on -> off.
+        let on = self.muted.remove(id);
+        if !on {
+            self.muted.insert(id.to_string());
+        }
+        self.rebuild();
+        self.hud(format!("{label} {}", if on { "on" } else { "off" }), on);
+    }
+
     fn set_armed(&mut self, armed: bool, from_hotkey: bool) {
         self.armed = armed;
         self.shared.armed.store(armed, Ordering::SeqCst);
@@ -624,6 +650,7 @@ impl Core {
         match m {
             HookMsg::Trigger { bound, down, repeat, t } => self.on_trigger(bound, down, repeat, t),
             HookMsg::MasterHotkey => self.set_armed(!self.armed, true),
+            HookMsg::ToggleBinding(id) => self.toggle_binding(&id),
             HookMsg::PanicHotkey => {
                 self.stop_everything();
                 self.hud("Stopped everything", false);
@@ -1058,6 +1085,36 @@ mod tests {
         sh.tx.send(HookMsg::Foreground(2)).unwrap();
         r.settle();
         assert!(r.engine.status().paused_own_window);
+    }
+
+    #[test]
+    fn toggle_key_turns_off_just_one_binding() {
+        let mut turbo = bind("turbo", 256, TriggerMode::Hold, Action::Rapid { output: 256, rate: 200.0, hold_ms: 1.0, jitter_pct: 0.0 });
+        turbo.toggle_key = crate::model::Hotkey { input: 0x76, mods: 0 };
+        let turn = bind("turn", 259, TriggerMode::Press, Action::Block);
+        let mut r = Rig::new(data(vec![turbo, turn]));
+        // Turbo running, then its toggle key: it stops and is out of the table.
+        r.key(256, true);
+        std::thread::sleep(Duration::from_millis(30));
+        r.key(0x76, true);
+        r.key(0x76, false);
+        r.settle();
+        let st = r.engine.status();
+        assert_eq!(st.muted, vec!["turbo".to_string()]);
+        assert!(st.running.is_empty(), "turning it off stops it");
+        r.key(256, false);
+        assert!(!r.key(256, true), "left click is a normal click now");
+        r.key(256, false);
+        assert!(r.key(259, true), "the other binding still works");
+        r.key(259, false);
+        // Same key: back on.
+        r.key(0x76, true);
+        r.key(0x76, false);
+        r.settle();
+        assert!(r.engine.status().muted.is_empty());
+        assert!(r.key(256, true));
+        r.key(256, false);
+        r.settle();
     }
 
     #[test]

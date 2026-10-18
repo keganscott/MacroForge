@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::input::{self, Input, INPUT_COUNT};
-use crate::model::{Action, Conditions, Data, Repress, Step, Trigger, TriggerMode};
+use crate::model::{Action, Conditions, Data, Hotkey, Repress, Step, Trigger, TriggerMode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Compiled {
@@ -46,6 +46,16 @@ pub struct Table {
     /// Profiles in effect for the app in front.
     pub active_profiles: Vec<String>,
     pub uses_mouse: bool,
+    /// Per-binding toggle keys of the active profiles (also for bindings
+    /// that are toggled off right now, so they can be turned back on).
+    pub toggles: Vec<Toggle>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Toggle {
+    pub key: Hotkey,
+    pub id: Arc<str>,
+    pub label: String,
 }
 
 impl Table {
@@ -68,6 +78,12 @@ impl Table {
         slot.iter().find(|b| b.required_mods() & mods == b.required_mods() && allowed(b))
     }
 
+    /// The binding toggle key `code` (+ `mods`) belongs to, if any.
+    pub fn toggle_for(&self, code: Input, mods: u8) -> Option<&Toggle> {
+        let mods = mods & !input::modifier_bit(code);
+        self.toggles.iter().find(|t| t.key.input == code && t.key.mods & mods == t.key.mods)
+    }
+
     pub fn contains(&self, id: &str) -> bool {
         self.bindings.iter().any(|b| &*b.id == id)
     }
@@ -79,6 +95,12 @@ pub fn profile_applies(apps: &[String], exe: Option<&str>) -> bool {
 }
 
 pub fn compile(data: &Data, exe: Option<&str>) -> Table {
+    compile_with(data, exe, &std::collections::HashSet::new())
+}
+
+/// `muted`: bindings switched off with their toggle key. They stay out of
+/// the table but keep their toggle key, so the same key turns them back on.
+pub fn compile_with(data: &Data, exe: Option<&str>, muted: &std::collections::HashSet<String>) -> Table {
     let mut table = Table::empty();
     let macros: HashMap<&str, (&str, Arc<Vec<Step>>)> =
         data.macros.iter().map(|m| (m.id.as_str(), (m.name.as_str(), Arc::new(m.steps.clone())))).collect();
@@ -136,6 +158,15 @@ pub fn compile(data: &Data, exe: Option<&str>) -> Table {
                 table.uses_mouse = true;
             }
             let label = if b.name.is_empty() { fallback } else { b.name.clone() };
+            if input::is_valid(b.toggle_key.input) {
+                if input::is_mouse_button(b.toggle_key.input) || input::is_wheel(b.toggle_key.input) {
+                    table.uses_mouse = true;
+                }
+                table.toggles.push(Toggle { key: b.toggle_key, id: Arc::from(b.id.as_str()), label: label.clone() });
+            }
+            if muted.contains(&b.id) {
+                continue;
+            }
             let bound = Arc::new(Bound {
                 id: Arc::from(b.id.as_str()),
                 profile_id: pid.clone(),

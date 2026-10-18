@@ -40,6 +40,8 @@ export interface Binding {
   action: Action;
   /** Missing on bindings made before conditions existed: treat as none. */
   conditions?: Conditions;
+  /** A key that turns just this binding off and on (input 0 = none). */
+  toggleKey?: Hotkey;
 }
 
 export interface Profile {
@@ -129,6 +131,8 @@ export interface Status {
   foregroundElevated: boolean | null;
   selfElevated: boolean;
   pausedOwnWindow: boolean;
+  /** Bindings switched off with their own toggle key (this session). */
+  muted?: string[];
   activeProfiles: string[];
   liveBindings: number;
   running: RunInfo[];

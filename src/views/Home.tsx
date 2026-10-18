@@ -5,6 +5,7 @@ import { SignalTrace } from "../components/brand";
 import { MasterSwitch, useNavigate } from "../components/Shell";
 import { Button, Callout, Card, cx, Eyebrow, Keycap, LiveDot, SectionTitle, StatusBadge } from "../components/ui";
 import { actionSummary, bindingTitle, fmtUs } from "../lib/describe";
+import { comboName } from "../lib/keys";
 import { useActive, useActiveInterval } from "../lib/active";
 import type { Binding, Stats } from "../lib/types";
 import { backend, useStore } from "../store";
@@ -185,7 +186,12 @@ export function HomeView() {
                           <Keycap input={b.trigger.input} mods={b.trigger.mods} />
                         </span>
                         <ArrowRight aria-hidden className="size-4 text-ink-faint" />
-                        <span className="flex-1 truncate text-sm font-semibold">{bindingTitle(b, data.macros)}</span>
+                        <span className={cx("flex-1 truncate text-sm font-semibold", status.muted?.includes(b.id) && "text-ink-faint line-through")}>{bindingTitle(b, data.macros)}</span>
+                        {status.muted?.includes(b.id) && (
+                          <span className="rounded-md border border-line-strong px-1.5 py-px text-[11px] font-bold text-ink-muted">
+                            Off{b.toggleKey?.input ? ` · ${comboName(b.toggleKey.input, b.toggleKey.mods)} turns it on` : ""}
+                          </span>
+                        )}
                         <span className="hidden truncate text-xs text-ink-muted xl:block">{b.name ? actionSummary(b.action, data.macros) : ""}</span>
                         {p.apps.length > 0 && <StatusBadge tone="info" icon={false}>{p.name}</StatusBadge>}
                       </li>

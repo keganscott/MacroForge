@@ -60,6 +60,8 @@ pub struct Binding {
     pub action: Action,
     /// When it is allowed to fire (rapid fire and macros only).
     pub conditions: Conditions,
+    /// A key that turns just this binding off and on (input 0 = none).
+    pub toggle_key: Hotkey,
 }
 
 /// Extra conditions on a rapid fire or macro binding. Both off by default;
@@ -90,6 +92,7 @@ impl Default for Binding {
             trigger: Trigger::default(),
             action: Action::Block,
             conditions: Conditions::default(),
+            toggle_key: Hotkey::default(),
         }
     }
 }
@@ -528,6 +531,13 @@ impl Data {
                 }
                 if !input::is_valid(c.while_held) || input::is_wheel(c.while_held) || c.while_held == b.trigger.input {
                     c.while_held = 0;
+                }
+                // A toggle key must be its own key: not left / right click
+                // (it would take over every click), not the binding's trigger.
+                b.toggle_key.mods &= MOD_ALL;
+                let tk = b.toggle_key.input;
+                if !input::is_valid(tk) || tk == input::MOUSE_LEFT || tk == input::MOUSE_RIGHT || tk == b.trigger.input {
+                    b.toggle_key = Hotkey::default();
                 }
                 b.action.sanitize()
             });

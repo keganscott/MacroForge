@@ -23,6 +23,8 @@ pub enum HookMsg {
     Trigger { bound: Arc<Bound>, down: bool, repeat: bool, t: f64 },
     MasterHotkey,
     PanicHotkey,
+    /// A binding's own toggle key: switch just that binding off / on.
+    ToggleBinding(Arc<str>),
     Captured { input: Input, mods: u8 },
     Record { input: Input, down: bool, t: f64 },
     RecordMove { dx: i32, dy: i32, t: f64 },
@@ -300,6 +302,9 @@ impl Gate {
                 Some(HookMsg::MasterHotkey)
             } else if self.hotkey_hit(sh.panic.load(Ordering::Relaxed), code, mods) {
                 Some(HookMsg::PanicHotkey)
+            } else if sh.armed.load(Ordering::Relaxed) {
+                // A binding's own toggle key (only while bindings are on).
+                sh.table.read().toggle_for(code, mods).map(|t| HookMsg::ToggleBinding(t.id.clone()))
             } else {
                 None
             };
@@ -406,7 +411,7 @@ impl Gate {
 mod tests {
     use super::*;
     use crate::input::{MOD_CTRL, WHEEL_UP};
-    use crate::model::{Action, Binding, Conditions, Data, Trigger, TriggerMode};
+    use crate::model::{Action, Binding, Conditions, Data, Hotkey, Trigger, TriggerMode};
     use crate::table::compile;
     use crossbeam_channel::{unbounded, Receiver};
 
@@ -615,6 +620,20 @@ mod tests {
         assert!(g.on_input(&sh, 256, true, Origin::Physical));
         assert!(g.on_input(&sh, 256, false, Origin::Physical));
         assert_eq!(triggers(&rx), vec![("plain".into(), true, false), ("plain".into(), false, false)]);
+    }
+
+    #[test]
+    fn a_toggle_key_switches_one_binding() {
+        let mut turbo = rapid("turbo", 256, TriggerMode::Hold, Conditions::default());
+        turbo.toggle_key = Hotkey { input: 0x76, mods: 0 }; // F7
+        let (sh, rx, mut g) = setup(vec![turbo, b("turn", 259, 0, false)]);
+        assert!(g.on_input(&sh, 0x76, true, Origin::Physical), "the toggle key is swallowed");
+        assert!(g.on_input(&sh, 0x76, false, Origin::Physical));
+        let msgs: Vec<_> = rx.try_iter().collect();
+        assert!(matches!(&msgs[..], [HookMsg::ToggleBinding(id)] if &**id == "turbo"));
+        // Bindings off: the key goes to the game as normal.
+        sh.armed.store(false, Ordering::Relaxed);
+        assert!(!g.on_input(&sh, 0x76, true, Origin::Physical));
     }
 
     #[test]

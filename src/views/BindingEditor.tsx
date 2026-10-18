@@ -100,6 +100,16 @@ export function BindingEditor({
   const conditions: Conditions = canCondition
     ? { ...raw, whileHeld: raw.whileHeld === b.trigger.input ? 0 : raw.whileHeld }
     : NO_CONDITIONS;
+  const toggleKey = b.toggleKey ?? { input: 0, mods: 0 };
+  const toggleProblem = !toggleKey.input
+    ? null
+    : toggleKey.input === b.trigger.input && toggleKey.mods === b.trigger.mods
+      ? "That is this binding’s own trigger; pick a different key."
+      : [s.masterHotkey, s.panicHotkey].some((h) => h.input === toggleKey.input && h.mods === toggleKey.mods)
+        ? "That is a MacroForge hotkey (Settings); pick a different key."
+        : profile.bindings.some((o) => o.id !== b.id && o.enabled && o.trigger.input === toggleKey.input && o.trigger.mods === toggleKey.mods)
+          ? `${comboName(toggleKey.input, toggleKey.mods)} also starts another binding in ${profile.name}; the on / off key wins.`
+          : null;
   const aimSwallowed =
     conditions.whileHeld !== 0 &&
     profile.bindings.some((o) => o.id !== b.id && o.enabled && o.trigger.input === conditions.whileHeld && !o.trigger.passthrough);
@@ -108,7 +118,7 @@ export function BindingEditor({
   const patch = (p: Partial<Action>) => setB((x) => ({ ...x, action: { ...x.action, ...p } as Action }));
 
   const save = () => {
-    const final: Binding = { ...b, trigger: { ...b.trigger, mode }, conditions };
+    const final: Binding = { ...b, trigger: { ...b.trigger, mode }, conditions, toggleKey: toggleKey.input === b.trigger.input ? { input: 0, mods: 0 } : toggleKey };
     update((d: Data) => ({
       ...d,
       profiles: d.profiles.map((p) => {
@@ -282,6 +292,48 @@ export function BindingEditor({
             )}
           </section>
         )}
+
+        {/* ------------------------------------------------ own on / off key */}
+        <section>
+          <StepLabel n={canCondition ? 4 : 3}>
+            On / off key
+            <span className="ml-2 text-xs font-semibold tracking-normal text-ink-faint">optional</span>
+          </StepLabel>
+          <div className={cx("rounded-xl border p-4", toggleKey.input ? "border-violet/50 bg-violet/[0.06]" : "border-line bg-surface-2")}>
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="min-w-0 flex-1 basis-64">
+                <p className="text-sm font-extrabold tracking-tight">Turn just this binding off and on</p>
+                <p className="mt-1 text-xs leading-relaxed text-ink-muted">
+                  Press it in game to switch this one off while everything else keeps working; press again to switch it back on. A notice shows which way it went.
+                </p>
+              </div>
+              <div className="flex flex-col items-start gap-2">
+                <KeyField
+                  label="On / off key"
+                  value={toggleKey}
+                  quick={[]}
+                  onChange={(v) => {
+                    if (v.input === MOUSE_LEFT || v.input === 257) {
+                      toast("Left and right click can’t be an on / off key: every click would toggle it.");
+                      return;
+                    }
+                    setB((x) => ({ ...x, toggleKey: v }));
+                  }}
+                />
+                {toggleKey.input !== 0 && (
+                  <button type="button" className="text-xs font-bold text-ink-muted hover:text-ink" onClick={() => setB((x) => ({ ...x, toggleKey: { input: 0, mods: 0 } }))}>
+                    Remove on / off key
+                  </button>
+                )}
+              </div>
+            </div>
+            {toggleProblem && (
+              <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-violet-soft">
+                <TriangleAlert aria-hidden className="size-4" /> {toggleProblem}
+              </p>
+            )}
+          </div>
+        </section>
 
         {/* ------------------------------------------------ name, profile */}
         <section className="grid grid-cols-2 gap-4">

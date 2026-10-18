@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Copy, Crosshair, Download, Gamepad2, Globe, Keyboard, MousePointer2, Pencil, Plus, RefreshCw, Search, Share2, Trash2, X } from "lucide-react";
+import { Ban, Copy, Crosshair, Download, Gamepad2, Globe, Keyboard, ListVideo, Lock, MousePointer2, Pencil, Plus, Power, RefreshCw, Repeat2, Search, Share2, Shuffle, Trash2, X } from "lucide-react";
 
 import { Button, Callout, Card, cx, Dialog, Empty, Field, IconButton, Keycap, LiveDot, PageHeader, StatusBadge, Switch, TextInput } from "../components/ui";
 import { actionSummary, ACTION_TEXT, bindingTitle, MODE_TEXT, newId, parseShare, shareProfile } from "../lib/describe";
 import type { AppEntry, Binding, Profile } from "../lib/types";
 import { backend, mutateProfile, toast, update, useStore } from "../store";
 import { conditionBadges } from "../components/Conditions";
+import { comboName } from "../lib/keys";
 import { BindingEditor } from "./BindingEditor";
 
 export function BindingsView({ focus }: { focus?: string }) {
@@ -24,6 +25,7 @@ export function BindingsView({ focus }: { focus?: string }) {
   }, [data.profiles, pid]);
 
   const live = new Set([...status.running.map((r) => r.id), ...status.locks]);
+  const muted = new Set(status.muted ?? []);
   const needle = q.trim().toLowerCase();
   const shown = profile.bindings.filter((b) => !needle || bindingTitle(b, data.macros).toLowerCase().includes(needle) || actionSummary(b.action, data.macros).toLowerCase().includes(needle));
 
@@ -162,6 +164,7 @@ export function BindingsView({ focus }: { focus?: string }) {
                   key={b.id}
                   b={b}
                   live={live.has(b.id)}
+                  muted={muted.has(b.id)}
                   onEdit={() => {
                     setEditing(b);
                     setEditorOpen(true);
@@ -183,9 +186,18 @@ export function BindingsView({ focus }: { focus?: string }) {
   );
 }
 
+const ROW_ICON: Record<Binding["action"]["type"], typeof Keyboard> = {
+  macro: ListVideo,
+  rapid: Repeat2,
+  remap: Shuffle,
+  holdLock: Lock,
+  block: Ban,
+};
+
 function BindingRow({
   b,
   live,
+  muted,
   onEdit,
   onToggle,
   onDuplicate,
@@ -193,6 +205,8 @@ function BindingRow({
 }: {
   b: Binding;
   live: boolean;
+  /** Switched off in game with its own on / off key. */
+  muted: boolean;
   onEdit: () => void;
   onToggle: (v: boolean) => void;
   onDuplicate: () => void;
@@ -200,23 +214,48 @@ function BindingRow({
 }) {
   const macros = useStore((s) => s.data!.macros);
   const missing = b.action.type === "macro" && !macros.some((m) => m.id === (b.action as { macroId: string }).macroId);
+  const Icon = ROW_ICON[b.action.type];
+  const tk = b.toggleKey?.input ? b.toggleKey : null;
+  const mode =
+    b.action.type === "remap" || b.action.type === "block" || b.action.type === "holdLock"
+      ? null
+      : MODE_TEXT[b.action.type === "rapid" && b.trigger.mode === "press" ? "hold" : b.trigger.mode].label;
   return (
-    <li className={cx("group flex items-center gap-4 rounded-2xl border bg-surface-1 px-4 py-3", live ? "border-lime/50" : "border-line", !b.enabled && "opacity-60")}>
+    <li
+      className={cx(
+        "group relative flex items-center gap-4 overflow-hidden rounded-2xl border bg-surface-1 py-3 pr-4 pl-3 transition-colors",
+        live ? "border-lime/50" : muted ? "border-line border-dashed" : "border-line hover:border-line-strong",
+        (!b.enabled || muted) && "opacity-70",
+      )}
+    >
+      {live && <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-lime" />}
       <button type="button" onClick={onEdit} className="flex min-w-0 flex-1 items-center gap-4 text-left">
-        <span className="w-48 shrink-0">
+        <span
+          className={cx(
+            "grid size-10 shrink-0 place-items-center rounded-xl",
+            live ? "bg-lime text-black" : b.enabled && !muted ? "bg-violet/15 text-violet" : "bg-surface-3 text-ink-faint",
+          )}
+        >
+          <Icon aria-hidden className="size-5" />
+        </span>
+        <span className="w-44 shrink-0">
           <Keycap input={b.trigger.input} mods={b.trigger.mods} />
         </span>
-        <ArrowRight aria-hidden className="size-4 shrink-0 text-ink-faint" />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
             <span className="truncate text-sm font-bold">{bindingTitle(b, macros)}</span>
             {live && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-lime">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-lime/15 px-1.5 py-px text-[11px] font-bold text-lime">
                 <LiveDot /> Running
               </span>
             )}
+            {muted && (
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-line-strong px-1.5 py-px text-[11px] font-bold text-ink-muted">
+                <Power aria-hidden className="size-3" /> Off for now{tk ? ` · ${comboName(tk.input, tk.mods)} turns it on` : ""}
+              </span>
+            )}
           </span>
-          <span className="mt-0.5 flex items-center gap-2 text-xs text-ink-muted">
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-ink-muted">
             <span>{ACTION_TEXT[b.action.type].label}</span>
             {b.name && <span className="truncate">· {actionSummary(b.action, macros)}</span>}
             {missing && <span className="font-bold text-bad">· its macro was deleted</span>}
@@ -226,13 +265,16 @@ function BindingRow({
                 {t}
               </span>
             ))}
+            {tk && !muted && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-line-strong px-1.5 py-px text-[11px] font-bold text-ink-muted" title="Its own on / off key">
+                <Power aria-hidden className="size-3" /> {comboName(tk.input, tk.mods)} on / off
+              </span>
+            )}
           </span>
         </span>
-        <span className="shrink-0 rounded-md border border-line-strong px-2 py-0.5 text-[11px] font-bold text-ink-muted">
-          {b.action.type === "remap" || b.action.type === "block" || b.action.type === "holdLock" ? "Key" : MODE_TEXT[b.action.type === "rapid" && b.trigger.mode === "press" ? "hold" : b.trigger.mode].label}
-        </span>
+        {mode && <span className="shrink-0 rounded-md border border-line-strong px-2 py-0.5 text-[11px] font-bold text-ink-muted">{mode}</span>}
       </button>
-      <div className="flex items-center gap-1 opacity-70 group-hover:opacity-100">
+      <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
         <IconButton label="Duplicate" onClick={onDuplicate}>
           <Copy aria-hidden className="size-4" />
         </IconButton>
