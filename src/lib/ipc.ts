@@ -26,6 +26,9 @@ export interface Backend {
   previewHud(): Promise<void>;
   testSound(on: boolean): Promise<void>;
   quitApp(): Promise<void>;
+  /** Show cursor state on the in-game notice for `seconds` (Pause in menus test). */
+  cursorTest(seconds: number): Promise<void>;
+  onCursorTest(cb: (t: { left: number; visible: boolean }) => void): () => void;
   onStatus(cb: (s: Status) => void): () => void;
   onMonitor(cb: (e: MonitorEvent[]) => void): () => void;
   onRecorded(cb: (n: number) => void): () => void;
@@ -71,6 +74,8 @@ async function tauriBackend(): Promise<Backend> {
     previewHud: () => invoke("preview_hud"),
     testSound: (on) => invoke("test_sound", { on }),
     quitApp: () => invoke("quit_app"),
+    cursorTest: (seconds) => invoke("cursor_test", { seconds }),
+    onCursorTest: (cb) => sub("cursor-test", cb),
     onStatus: (cb) => sub("status", cb),
     onMonitor: (cb) => sub("monitor", cb),
     onRecorded: (cb) => sub("recorded", cb),

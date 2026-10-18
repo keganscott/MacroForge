@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Copy, Download, Gamepad2, Globe, Keyboard, Pencil, Plus, RefreshCw, Search, Share2, Trash2, X } from "lucide-react";
+import { ArrowRight, Copy, Crosshair, Download, Gamepad2, Globe, Keyboard, MousePointer2, Pencil, Plus, RefreshCw, Search, Share2, Trash2, X } from "lucide-react";
 
 import { Button, Callout, Card, cx, Dialog, Empty, Field, IconButton, Keycap, LiveDot, PageHeader, StatusBadge, Switch, TextInput } from "../components/ui";
 import { actionSummary, ACTION_TEXT, bindingTitle, MODE_TEXT, newId, parseShare, shareProfile } from "../lib/describe";
 import type { AppEntry, Binding, Profile } from "../lib/types";
 import { backend, mutateProfile, toast, update, useStore } from "../store";
+import { conditionBadges } from "../components/Conditions";
 import { BindingEditor } from "./BindingEditor";
 
 export function BindingsView({ focus }: { focus?: string }) {
@@ -219,6 +220,12 @@ function BindingRow({
             <span>{ACTION_TEXT[b.action.type].label}</span>
             {b.name && <span className="truncate">· {actionSummary(b.action, macros)}</span>}
             {missing && <span className="font-bold text-bad">· its macro was deleted</span>}
+            {conditionBadges(b.conditions).map((t) => (
+              <span key={t} className="inline-flex items-center gap-1 rounded-md border border-violet/40 bg-violet/10 px-1.5 py-px text-[11px] font-bold text-violet-soft">
+                {t.startsWith("Not") ? <MousePointer2 aria-hidden className="size-3" /> : <Crosshair aria-hidden className="size-3" />}
+                {t}
+              </span>
+            ))}
           </span>
         </span>
         <span className="shrink-0 rounded-md border border-line-strong px-2 py-0.5 text-[11px] font-bold text-ink-muted">

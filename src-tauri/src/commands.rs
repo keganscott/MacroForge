@@ -200,6 +200,52 @@ pub fn open_data_dir(st: State<AppState>) {
     let _ = std::process::Command::new("explorer").arg(&st.dir).spawn();
 }
 
+static CURSOR_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// "Test in my game" for Pause in menus: for `seconds`, the on-screen notice
+/// says whether the cursor is showing each time that changes, so you can
+/// switch to a game, open its inventory and see if it is detected. Also
+/// reports to the window (event "cursor-test") for the button's countdown.
+#[tauri::command]
+pub fn cursor_test(app: tauri::AppHandle, st: State<AppState>, seconds: u32) {
+    use std::sync::atomic::Ordering;
+    use tauri::Emitter;
+    if CURSOR_TEST.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let notifier = st.notifier.clone();
+    let seconds = seconds.clamp(5, 60);
+    std::thread::spawn(move || {
+        #[cfg(windows)]
+        let probe = macroforge_engine::win::sys::cursor_visible;
+        #[cfg(not(windows))]
+        let probe = || false;
+        let start = std::time::Instant::now();
+        let mut last: Option<bool> = None;
+        let mut last_left = u32::MAX;
+        while start.elapsed().as_secs() < seconds as u64 {
+            let visible = probe();
+            if last != Some(visible) {
+                last = Some(visible);
+                let hud = if visible {
+                    Hud { text: "Menu: clicks pass through off".into(), on: false }
+                } else {
+                    Hud { text: "Gameplay: rapid fire works on".into(), on: true }
+                };
+                notifier.show_hud(&hud, true);
+            }
+            let left = seconds - start.elapsed().as_secs() as u32;
+            if left != last_left {
+                last_left = left;
+                let _ = app.emit_to("main", "cursor-test", serde_json::json!({ "left": left, "visible": visible }));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(40));
+        }
+        let _ = app.emit_to("main", "cursor-test", serde_json::json!({ "left": 0, "visible": last.unwrap_or(false) }));
+        CURSOR_TEST.store(false, Ordering::SeqCst);
+    });
+}
+
 /// Quit completely (Home offers it when a game that flags macro tools is in front).
 #[tauri::command]
 pub fn quit_app(app: tauri::AppHandle) {

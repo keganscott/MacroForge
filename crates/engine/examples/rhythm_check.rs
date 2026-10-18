@@ -32,7 +32,7 @@ fn main() {
             let mut w = HiResWaiter::new(TimingMode::Precise);
             let mut late = Vec::new();
             let mut cx = Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() };
-            run_rapid(256, 15.0, 0.0, 0.0, &Null, &mut cx, &mut |l| late.push(l * 1000.0));
+            run_rapid(256, 15.0, 0.0, 0.0, &Null, &mut cx, &mut |l| late.push(l * 1000.0), &|| true);
             late
         });
         std::thread::sleep(std::time::Duration::from_secs(3));

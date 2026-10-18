@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cursor-test"
+description = "Enables the cursor_test command without any pre-configured scope."
+commands.allow = ["cursor_test"]
+
+[[permission]]
+identifier = "deny-cursor-test"
+description = "Denies the cursor_test command without any pre-configured scope."
+commands.deny = ["cursor_test"]

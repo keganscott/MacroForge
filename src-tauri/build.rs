@@ -23,6 +23,7 @@ const COMMANDS: &[&str] = &[
     "preview_hud",
     "test_sound",
     "quit_app",
+    "cursor_test",
 ];
 
 fn main() {

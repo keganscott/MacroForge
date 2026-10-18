@@ -19,7 +19,7 @@ use serde::Serialize;
 
 use crate::gate::{HookMsg, Shared};
 use crate::input::{self, Input};
-use crate::model::{Data, Step, TimingMode, TriggerMode};
+use crate::model::{Conditions, Data, Step, TimingMode, TriggerMode};
 use crate::recorder::{self, RecEv};
 use crate::runner::{self, Ctx, Loop, Output};
 use crate::table::{compile, Bound, Compiled, Table};
@@ -579,7 +579,8 @@ impl Core {
             Cmd::Play { id, label, steps } => {
                 let id: Arc<str> = Arc::from(format!("play:{id}"));
                 self.stop_run(&id, true);
-                self.start(id, label, TriggerMode::Press, Job::Macro { steps, lp: Loop::Times(1) }, now_ms());
+                let job = Job::Macro { steps, lp: Loop::Times(1), conditions: Conditions::default() };
+                self.start(id, label, TriggerMode::Press, job, now_ms());
             }
             Cmd::StopRun(id) => {
                 let key: Option<Arc<str>> = self.runs.keys().find(|k| ***k == *id || k.strip_prefix("play:") == Some(&id)).cloned();
@@ -719,11 +720,21 @@ impl Core {
                 self.publish();
             }
             Compiled::Macro { steps, repeat: times, on_repress, stop_immediately } => {
-                let job = || Job::Macro { steps: steps.clone(), lp: Loop::for_mode(b.trigger.mode, *times) };
+                let job = || Job::Macro {
+                    steps: steps.clone(),
+                    lp: Loop::for_mode(b.trigger.mode, *times),
+                    conditions: b.conditions,
+                };
                 self.mode_logic(&b, down, repeat, t, *on_repress, *stop_immediately, job);
             }
             Compiled::Rapid { output, rate, hold_ms, jitter_pct } => {
-                let job = || Job::Rapid { output: *output, rate: *rate, hold_ms: *hold_ms, jitter_pct: *jitter_pct };
+                let job = || Job::Rapid {
+                    output: *output,
+                    rate: *rate,
+                    hold_ms: *hold_ms,
+                    jitter_pct: *jitter_pct,
+                    conditions: b.conditions,
+                };
                 self.mode_logic(&b, down, repeat, t, crate::model::Repress::Ignore, true, job);
             }
         }
@@ -792,6 +803,8 @@ impl Core {
             };
         }
         let (c2, id2) = (cancel.clone(), id.clone());
+        // The binding's conditions, re-checked before every press / pass.
+        let (shared, conditions) = (self.shared.clone(), job.conditions());
         self.pool.submit(Box::new(move || {
             let out = platform.output();
             let mut waiter = platform.waiter(timing);
@@ -800,16 +813,17 @@ impl Core {
             // during unwinding) and tell the engine the run is over.
             let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut cx = Ctx { waiter: &mut *waiter, cancel: &c2, rng: Rng::from_time(), t: now_ms() };
+                let ok = || !conditions.any() || shared.conditions_ok(&conditions);
                 match job {
-                    Job::Macro { steps, lp } => runner::run_macro(&steps, lp, &*out, &mut cx),
-                    Job::Rapid { output, rate, hold_ms, jitter_pct } => {
+                    Job::Macro { steps, lp, .. } => runner::run_macro(&steps, lp, &*out, &mut cx, &ok),
+                    Job::Rapid { output, rate, hold_ms, jitter_pct, .. } => {
                         runner::run_rapid(output, rate, hold_ms, jitter_pct, &*out, &mut cx, &mut |late| {
                             let mut r = rhythm.lock();
                             r.presses += 1;
                             if r.late_us.len() < 4096 {
                                 r.late_us.push(late * 1000.0);
                             }
-                        })
+                        }, &ok)
                     }
                 }
             }));
@@ -855,8 +869,16 @@ fn release_remap(out: &dyn Output, key: Input, mods: u8) {
 }
 
 enum Job {
-    Macro { steps: Arc<Vec<Step>>, lp: Loop },
-    Rapid { output: Input, rate: f64, hold_ms: f64, jitter_pct: f64 },
+    Macro { steps: Arc<Vec<Step>>, lp: Loop, conditions: Conditions },
+    Rapid { output: Input, rate: f64, hold_ms: f64, jitter_pct: f64, conditions: Conditions },
+}
+
+impl Job {
+    fn conditions(&self) -> Conditions {
+        match self {
+            Job::Macro { conditions, .. } | Job::Rapid { conditions, .. } => *conditions,
+        }
+    }
 }
 
 #[cfg(test)]

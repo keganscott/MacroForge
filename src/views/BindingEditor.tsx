@@ -4,13 +4,14 @@
 import { useEffect, useState } from "react";
 import { Ban, Keyboard, ListVideo, Lock, Plus, Repeat2, Shuffle, Trash2, TriangleAlert } from "lucide-react";
 
+import { ConditionsEditor } from "../components/Conditions";
 import { KeyField } from "../components/KeyField";
 import { useNavigate } from "../components/Shell";
 import { Button, Callout, cx, Dialog, Field, NumberField, Segmented, Select, Slider, Switch, TextInput } from "../components/ui";
 import { ACTION_TEXT, conflicts, fmtRate, MODE_TEXT, newId } from "../lib/describe";
 import { rulesFor } from "../lib/presets";
 import { comboName, keyName, MOUSE_LEFT } from "../lib/keys";
-import type { Action, ActionType, Binding, Data, Macro, TriggerMode } from "../lib/types";
+import { NO_CONDITIONS, type Action, type ActionType, type Binding, type Conditions, type Data, type Macro, type TriggerMode } from "../lib/types";
 import { toast, update, useStore } from "../store";
 
 const ACTION_ICON: Record<ActionType, typeof Keyboard> = {
@@ -28,6 +29,7 @@ export function blankBinding(): Binding {
     enabled: true,
     trigger: { input: 0, mods: 0, mode: "press", passthrough: false },
     action: { type: "remap", output: 0, mods: 0 },
+    conditions: NO_CONDITIONS,
   };
 }
 
@@ -93,11 +95,21 @@ export function BindingEditor({
   const missingMacro = b.action.type === "macro" && !data.macros.some((m) => m.id === (b.action as { macroId: string }).macroId);
   const canSave = b.trigger.input !== 0 && !missingOutput && !missingMacro;
 
+  // Conditions only apply to things that run over time.
+  const canCondition = b.action.type === "rapid" || b.action.type === "macro";
+  const raw = b.conditions ?? NO_CONDITIONS;
+  const conditions: Conditions = canCondition
+    ? { ...raw, whileHeld: raw.whileHeld === b.trigger.input ? 0 : raw.whileHeld }
+    : NO_CONDITIONS;
+  const aimSwallowed =
+    conditions.whileHeld !== 0 &&
+    profile.bindings.some((o) => o.id !== b.id && o.enabled && o.trigger.input === conditions.whileHeld && !o.trigger.passthrough);
+
   const setAction = (a: Action) => setB((x) => ({ ...x, action: a }));
   const patch = (p: Partial<Action>) => setB((x) => ({ ...x, action: { ...x.action, ...p } as Action }));
 
   const save = () => {
-    const final: Binding = { ...b, trigger: { ...b.trigger, mode } };
+    const final: Binding = { ...b, trigger: { ...b.trigger, mode }, conditions };
     update((d: Data) => ({
       ...d,
       profiles: d.profiles.map((p) => {
@@ -248,6 +260,29 @@ export function BindingEditor({
             )}
           </div>
         </section>
+
+        {/* ------------------------------------------------ only when… */}
+        {canCondition && (
+          <section>
+            <StepLabel n={3}>
+              Only when…
+              <span className="ml-2 text-xs font-semibold tracking-normal text-ink-faint">optional</span>
+            </StepLabel>
+            <ConditionsEditor
+              value={conditions}
+              onChange={(c) => setB((x) => ({ ...x, conditions: c }))}
+              trigger={b.trigger.input}
+              action={b.action}
+              mode={mode}
+            />
+            {aimSwallowed && (
+              <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-violet-soft">
+                <TriangleAlert aria-hidden className="size-4" />
+                {keyName(conditions.whileHeld)} is also a trigger in {profile.name} that hides it from the game, so the game would not see you aim.
+              </p>
+            )}
+          </section>
+        )}
 
         {gameRules && gameRules.rules.level !== "yours" && b.action.type !== "block" && (
           <Callout tone="bad" title={gameRules.rules.level === "incompatible" ? `${gameRules.game.name} flags macro tools that are running` : `${gameRules.game.name}’s rules ban macros`}>

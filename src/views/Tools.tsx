@@ -9,7 +9,8 @@ import { KeyField, type KeyValue } from "../components/KeyField";
 import { Button, Card, Field, NumberField, Segmented, Select, Slider, TextInput } from "../components/ui";
 import { fmtRate, newId } from "../lib/describe";
 import { comboName, keyName, MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, WHEEL_DOWN, WHEEL_UP } from "../lib/keys";
-import type { Action, Binding, Macro, Trigger, TriggerMode } from "../lib/types";
+import { NO_CONDITIONS, type Action, type Binding, type Conditions, type Macro, type Trigger, type TriggerMode } from "../lib/types";
+import { ConditionsQuick } from "../components/Conditions";
 import { toast, update, useStore } from "../store";
 import { PageHeader } from "../components/ui";
 
@@ -18,13 +19,14 @@ export function ToolsView() {
   const [pid, setPid] = useState(profiles[0]!.id);
   const profile = profiles.find((p) => p.id === pid) ?? profiles[0]!;
 
-  const add = (name: string, trigger: Partial<Trigger> & { input: number }, action: Action, macro?: Macro) => {
+  const add = (name: string, trigger: Partial<Trigger> & { input: number }, action: Action, macro?: Macro, conditions: Conditions = NO_CONDITIONS) => {
     const b: Binding = {
       id: newId("b"),
       name,
       enabled: true,
       trigger: { mods: 0, mode: "press", passthrough: false, ...trigger },
       action,
+      conditions,
     };
     update((d) => ({
       ...d,
@@ -59,7 +61,7 @@ export function ToolsView() {
   );
 }
 
-type AddFn = (name: string, trigger: Partial<Trigger> & { input: number }, action: Action, macro?: Macro) => void;
+type AddFn = (name: string, trigger: Partial<Trigger> & { input: number }, action: Action, macro?: Macro, conditions?: Conditions) => void;
 
 function Tool({ icon, title, hint, children, footer }: { icon: ReactNode; title: string; hint: string; children: ReactNode; footer: ReactNode }) {
   return (
@@ -106,6 +108,7 @@ function AutoClicker({ onAdd }: { onAdd: AddFn }) {
   const [rate, setRate] = useState(15);
   const [key, setKey] = useState<KeyValue>({ input: 0x76, mods: 0 });
   const [mode, setMode] = useState<TriggerMode>("toggle");
+  const [cond, setCond] = useState<Conditions>(NO_CONDITIONS);
   return (
     <Tool
       icon={<MousePointerClick aria-hidden className="size-5" />}
@@ -116,7 +119,7 @@ function AutoClicker({ onAdd }: { onAdd: AddFn }) {
           <span className="mr-auto text-xs text-ink-muted">
             {comboName(key.input, key.mods)} {mode === "toggle" ? "starts / stops" : "held"} → {keyName(button)} {fmtRate(rate)}×/s
           </span>
-          <Button variant="primary" disabled={!key.input} onClick={() => onAdd("Auto-clicker", { input: key.input, mods: key.mods, mode }, { type: "rapid", output: button, rate, holdMs: 0, jitterPct: 0 })}>
+          <Button variant="primary" disabled={!key.input} onClick={() => onAdd("Auto-clicker", { input: key.input, mods: key.mods, mode }, { type: "rapid", output: button, rate, holdMs: 0, jitterPct: 0 }, undefined, cond)}>
             Add auto-clicker
           </Button>
         </>
@@ -141,6 +144,7 @@ function AutoClicker({ onAdd }: { onAdd: AddFn }) {
         <KeyField label="Auto-clicker key" value={key} onChange={setKey} quick={[]} />
       </Field>
       <ModePick value={mode} onChange={setMode} />
+      <ConditionsQuick value={cond} onChange={setCond} trigger={key.input} toggle={mode === "toggle"} />
     </Tool>
   );
 }
@@ -148,13 +152,14 @@ function AutoClicker({ onAdd }: { onAdd: AddFn }) {
 function Turbo({ onAdd }: { onAdd: AddFn }) {
   const [key, setKey] = useState<KeyValue>({ input: 0, mods: 0 });
   const [rate, setRate] = useState(12);
+  const [cond, setCond] = useState<Conditions>(NO_CONDITIONS);
   return (
     <Tool
       icon={<Repeat2 aria-hidden className="size-5" />}
       title="Turbo key"
       hint="Hold a key or button and it repeats by itself, like a controller's turbo."
       footer={
-        <Button variant="primary" disabled={!key.input} onClick={() => onAdd(`Turbo ${keyName(key.input)}`, { input: key.input, mode: "hold" }, { type: "rapid", output: key.input, rate, holdMs: 0, jitterPct: 0 })}>
+        <Button variant="primary" disabled={!key.input} onClick={() => onAdd(`Turbo ${keyName(key.input)}`, { input: key.input, mode: "hold" }, { type: "rapid", output: key.input, rate, holdMs: 0, jitterPct: 0 }, undefined, cond)}>
           Add turbo
         </Button>
       }
@@ -165,6 +170,7 @@ function Turbo({ onAdd }: { onAdd: AddFn }) {
       <Field label="Repeats per second">
         <Rate value={rate} onChange={setRate} />
       </Field>
+      <ConditionsQuick value={cond} onChange={(c) => setCond({ ...c, whileHeld: c.whileHeld === key.input ? 0 : c.whileHeld })} trigger={key.input} toggle={false} />
     </Tool>
   );
 }

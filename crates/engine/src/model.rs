@@ -58,6 +58,27 @@ pub struct Binding {
     pub enabled: bool,
     pub trigger: Trigger,
     pub action: Action,
+    /// When it is allowed to fire (rapid fire and macros only).
+    pub conditions: Conditions,
+}
+
+/// Extra conditions on a rapid fire or macro binding. Both off by default;
+/// when both are on, both must hold.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Conditions {
+    /// Fire only while this key or mouse button is held, e.g. right click
+    /// to aim (0 = no such condition). Without it, the trigger works as a
+    /// normal key or click.
+    pub while_held: Input,
+    /// Pause while the mouse cursor is showing (inventory, map, menus).
+    pub pause_in_menus: bool,
+}
+
+impl Conditions {
+    pub fn any(&self) -> bool {
+        self.while_held != 0 || self.pause_in_menus
+    }
 }
 
 impl Default for Binding {
@@ -68,6 +89,7 @@ impl Default for Binding {
             enabled: true,
             trigger: Trigger::default(),
             action: Action::Block,
+            conditions: Conditions::default(),
         }
     }
 }
@@ -472,6 +494,16 @@ impl Data {
                 if !input::is_valid(b.trigger.input) {
                     b.trigger.input = 0;
                 }
+                let c = &mut b.conditions;
+                // Only rapid fire and macros run over time, so only they
+                // can be gated. A held condition must be a holdable input
+                // other than the trigger itself.
+                if !matches!(b.action, Action::Rapid { .. } | Action::Macro { .. }) {
+                    *c = Conditions::default();
+                }
+                if !input::is_valid(c.while_held) || input::is_wheel(c.while_held) || c.while_held == b.trigger.input {
+                    c.while_held = 0;
+                }
                 b.action.sanitize()
             });
             dropped += before - p.bindings.len();
@@ -578,6 +610,34 @@ mod tests {
             .collect();
         assert_eq!(holds, vec![0.0, 0.0, 40.0], "a deliberate 40 ms is kept");
         assert_eq!(d.version, DATA_VERSION);
+    }
+
+    #[test]
+    fn conditions_are_kept_only_where_they_make_sense() {
+        let mut d = Data::default();
+        let rapid = Action::Rapid { output: 256, rate: 10.0, hold_ms: 0.0, jitter_pct: 0.0 };
+        let mk = |id: &str, input: Input, action: Action, held: Input| Binding {
+            id: id.into(),
+            trigger: Trigger { input, ..Default::default() },
+            action,
+            conditions: Conditions { while_held: held, pause_in_menus: true },
+            ..Default::default()
+        };
+        d.profiles[0].bindings = vec![
+            mk("ok", 256, rapid.clone(), 257),
+            mk("self", 256, rapid.clone(), 256),
+            mk("wheel", 256, rapid.clone(), crate::input::WHEEL_UP),
+            mk("remap", 0x41, Action::Remap { output: 0x42, mods: 0 }, 257),
+        ];
+        d.sanitize();
+        let c: Vec<Conditions> = d.profiles[0].bindings.iter().map(|b| b.conditions).collect();
+        assert_eq!(c[0], Conditions { while_held: 257, pause_in_menus: true });
+        assert_eq!(c[1], Conditions { while_held: 0, pause_in_menus: true }, "not its own trigger");
+        assert_eq!(c[2].while_held, 0, "a wheel notch cannot be held");
+        assert_eq!(c[3], Conditions::default(), "a remap is instant");
+        // Old saves without the field load with both off.
+        let b: Binding = serde_json::from_str(r#"{"id":"x","action":{"type":"block"}}"#).unwrap();
+        assert!(!b.conditions.any());
     }
 
     #[test]

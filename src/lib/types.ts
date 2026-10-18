@@ -22,12 +22,24 @@ export type Action =
 
 export type ActionType = Action["type"];
 
+/** When a rapid fire or macro binding may fire. Both off = always. */
+export interface Conditions {
+  /** Only while this key / button is held (0 = off), e.g. right click to aim. */
+  whileHeld: Input;
+  /** Pause while the mouse cursor is showing (inventory, map, menus). */
+  pauseInMenus: boolean;
+}
+
+export const NO_CONDITIONS: Conditions = { whileHeld: 0, pauseInMenus: false };
+
 export interface Binding {
   id: string;
   name: string;
   enabled: boolean;
   trigger: Trigger;
   action: Action;
+  /** Missing on bindings made before conditions existed: treat as none. */
+  conditions?: Conditions;
 }
 
 export interface Profile {

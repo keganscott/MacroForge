@@ -13,7 +13,7 @@ use crossbeam_channel::Sender;
 use parking_lot::RwLock;
 
 use crate::input::{self, Input, INPUT_COUNT};
-use crate::model::Hotkey;
+use crate::model::{Conditions, Hotkey, TriggerMode};
 use crate::table::{Bound, Table};
 use crate::timing::now_ms;
 
@@ -67,6 +67,11 @@ pub struct Shared {
     pub events: AtomicU64,
     pub busy_ns: AtomicU64,
     pub max_ns: AtomicU64,
+    /// Which keys and buttons are physically down (the hook writes, running
+    /// macros read it to check "only while held").
+    held: Vec<AtomicBool>,
+    /// "Is the mouse cursor showing?" from the platform (menus, inventory).
+    cursor_probe: std::sync::OnceLock<fn() -> bool>,
 }
 
 impl Shared {
@@ -86,7 +91,28 @@ impl Shared {
             events: AtomicU64::new(0),
             busy_ns: AtomicU64::new(0),
             max_ns: AtomicU64::new(0),
+            held: (0..INPUT_COUNT).map(|_| AtomicBool::new(false)).collect(),
+            cursor_probe: std::sync::OnceLock::new(),
         }
+    }
+
+    /// Install the platform's cursor check (once, at hook start).
+    pub fn set_cursor_probe(&self, probe: fn() -> bool) {
+        let _ = self.cursor_probe.set(probe);
+    }
+
+    pub fn cursor_visible(&self) -> bool {
+        self.cursor_probe.get().is_some_and(|f| f())
+    }
+
+    pub fn is_held(&self, code: Input) -> bool {
+        self.held.get(code as usize).is_some_and(|h| h.load(Ordering::Relaxed))
+    }
+
+    /// Are a binding's conditions met right now? The cursor is only asked
+    /// about when the binding uses it.
+    pub fn conditions_ok(&self, c: &Conditions) -> bool {
+        (c.while_held == 0 || self.is_held(c.while_held)) && (!c.pause_in_menus || !self.cursor_visible())
     }
 
     pub fn set_hotkeys(&self, master: Hotkey, panic: Hotkey) {
@@ -127,6 +153,9 @@ pub struct Gate {
     last_pt: Option<(i32, i32)>,
     /// Capture: a modifier is down and may be the start of a chord.
     capture_mod: Option<Input>,
+    /// How many matched presses depend on an "only while held" key, so key
+    /// releases skip the scan when there are none.
+    conditional: usize,
 }
 
 impl Default for Gate {
@@ -137,6 +166,7 @@ impl Default for Gate {
             swallow_up: vec![false; INPUT_COUNT],
             last_pt: None,
             capture_mod: None,
+            conditional: 0,
         }
     }
 }
@@ -184,6 +214,7 @@ impl Gate {
         let repeat = down && !momentary && self.down[i];
         if !momentary {
             self.down[i] = down;
+            sh.held[i].store(down, Ordering::Relaxed);
         }
         let mods = self.mods();
         let t = now_ms();
@@ -259,8 +290,25 @@ impl Gate {
         }
 
         if !down {
+            // Letting go of an "only while held" key (e.g. right click to
+            // aim) ends a held binding that depended on it right away. Its
+            // trigger is still held, so that release is swallowed later too.
+            if self.conditional > 0 {
+                for j in 0..INPUT_COUNT {
+                    let ends = matches!(&self.matched[j], Some(b) if b.conditions.while_held == code && b.trigger.mode == TriggerMode::Hold);
+                    if ends {
+                        let b = self.matched[j].take().unwrap();
+                        self.conditional -= 1;
+                        self.swallow_up[j] = !b.trigger.passthrough;
+                        let _ = sh.tx.send(HookMsg::Trigger { bound: b, down: false, repeat: false, t });
+                    }
+                }
+            }
             return match self.matched[i].take() {
                 Some(b) => {
+                    if b.conditions.while_held != 0 {
+                        self.conditional -= 1;
+                    }
                     let swallow = !b.trigger.passthrough;
                     let _ = sh.tx.send(HookMsg::Trigger { bound: b, down: false, repeat: false, t });
                     swallow
@@ -286,12 +334,23 @@ impl Gate {
             return false;
         }
         let table = sh.table.read().clone();
-        let Some(b) = table.lookup(code, mods) else { return false };
+        // A press or hold binding whose conditions are not met right now is
+        // skipped: the click goes to the next binding on it, or to the game
+        // as a normal click. (A toggle's key always toggles; its conditions
+        // decide when the running toggle actually fires.)
+        let Some(b) = table.lookup_where(code, mods, |b| {
+            b.trigger.mode == TriggerMode::Toggle || !b.conditions.any() || sh.conditions_ok(&b.conditions)
+        }) else {
+            return false;
+        };
         let swallow = !b.trigger.passthrough;
         if momentary {
             let _ = sh.tx.send(HookMsg::Trigger { bound: b.clone(), down: true, repeat: false, t });
             let _ = sh.tx.send(HookMsg::Trigger { bound: b.clone(), down: false, repeat: false, t });
         } else {
+            if b.conditions.while_held != 0 {
+                self.conditional += 1;
+            }
             self.matched[i] = Some(b.clone());
             let _ = sh.tx.send(HookMsg::Trigger { bound: b.clone(), down: true, repeat: false, t });
         }
@@ -324,7 +383,7 @@ impl Gate {
 mod tests {
     use super::*;
     use crate::input::{MOD_CTRL, WHEEL_UP};
-    use crate::model::{Action, Binding, Data, Trigger};
+    use crate::model::{Action, Binding, Conditions, Data, Trigger, TriggerMode};
     use crate::table::compile;
     use crossbeam_channel::{unbounded, Receiver};
 
@@ -442,6 +501,78 @@ mod tests {
             })
             .collect();
         assert_eq!(got, vec![(0x46, MOD_CTRL), (0xA0, 0), (0, 0)]);
+    }
+
+    fn rapid(id: &str, input: Input, mode: TriggerMode, c: Conditions) -> Binding {
+        Binding {
+            id: id.into(),
+            trigger: Trigger { input, mode, ..Default::default() },
+            action: Action::Rapid { output: 256, rate: 10.0, hold_ms: 0.0, jitter_pct: 0.0 },
+            conditions: c,
+            ..Default::default()
+        }
+    }
+
+    static CURSOR_SHOWING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    fn fake_cursor() -> bool {
+        CURSOR_SHOWING.load(Ordering::Relaxed)
+    }
+
+    #[test]
+    fn only_while_aiming() {
+        let aim = Conditions { while_held: 257, pause_in_menus: false };
+        let (sh, rx, mut g) = setup(vec![rapid("r", 256, TriggerMode::Hold, aim)]);
+        // Not aiming: a normal click reaches the game (inventory drags work).
+        assert!(!g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(!g.on_input(&sh, 256, false, Origin::Physical));
+        assert!(triggers(&rx).is_empty());
+        // Aiming: the click becomes rapid fire.
+        assert!(!g.on_input(&sh, 257, true, Origin::Physical), "right click still reaches the game");
+        assert!(g.on_input(&sh, 256, true, Origin::Physical));
+        assert_eq!(triggers(&rx), vec![("r".into(), true, false)]);
+        // Let go of aim mid-burst: it stops right away...
+        assert!(!g.on_input(&sh, 257, false, Origin::Physical));
+        assert_eq!(triggers(&rx), vec![("r".into(), false, false)]);
+        // ...and the left-click release that follows is swallowed, no extra event.
+        assert!(g.on_input(&sh, 256, false, Origin::Physical));
+        assert!(triggers(&rx).is_empty());
+        // Holding left click first, then aiming, does not start it mid-hold.
+        assert!(!g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(!g.on_input(&sh, 257, true, Origin::Physical));
+        assert!(!g.on_input(&sh, 256, false, Origin::Physical));
+        assert!(triggers(&rx).is_empty());
+    }
+
+    #[test]
+    fn pause_in_menus_follows_the_cursor() {
+        let menus = Conditions { while_held: 0, pause_in_menus: true };
+        let (sh, rx, mut g) = setup(vec![rapid("r", 256, TriggerMode::Hold, menus)]);
+        sh.set_cursor_probe(fake_cursor);
+        CURSOR_SHOWING.store(true, Ordering::Relaxed); // inventory open
+        assert!(!g.on_input(&sh, 256, true, Origin::Physical), "normal click in menus");
+        assert!(!g.on_input(&sh, 256, false, Origin::Physical));
+        CURSOR_SHOWING.store(false, Ordering::Relaxed); // back in gameplay
+        assert!(g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(g.on_input(&sh, 256, false, Origin::Physical));
+        assert_eq!(triggers(&rx).len(), 2);
+    }
+
+    #[test]
+    fn a_toggle_key_always_toggles() {
+        let aim = Conditions { while_held: 257, pause_in_menus: false };
+        let (sh, rx, mut g) = setup(vec![rapid("t", 0x75, TriggerMode::Toggle, aim)]);
+        assert!(g.on_input(&sh, 0x75, true, Origin::Physical));
+        assert!(g.on_input(&sh, 0x75, false, Origin::Physical));
+        assert_eq!(triggers(&rx).len(), 2, "conditions decide when it fires, not whether F6 toggles");
+    }
+
+    #[test]
+    fn a_failed_condition_falls_through_to_the_next_binding() {
+        let aim = Conditions { while_held: 257, pause_in_menus: false };
+        let (sh, rx, mut g) = setup(vec![rapid("aimed", 256, TriggerMode::Hold, aim), b("plain", 256, 0, false)]);
+        assert!(g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(g.on_input(&sh, 256, false, Origin::Physical));
+        assert_eq!(triggers(&rx), vec![("plain".into(), true, false), ("plain".into(), false, false)]);
     }
 
     #[test]

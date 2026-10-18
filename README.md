@@ -43,6 +43,18 @@ React/TypeScript/Tailwind UI.
   - remap to another key or a shortcut (Ctrl + C)
   - hold a key down until pressed again
   - disable the key
+- **"Only when…" conditions** (rapid fire and macros):
+  - **Only while aiming:** fires only while a second button is held (right
+    click by default, or Mouse 4/5). Without it the trigger is a normal
+    click, so inventory drags work. Letting go of aim stops a burst at once.
+  - **Pause in menus:** clicks go through normally whenever the game shows
+    its mouse cursor (inventory, map, menus). A cursor that is hidden, has
+    a null image, or is pinned for mouse-look counts as gameplay. **Test in
+    my game** shows what MacroForge sees on the in-game notice for 20
+    seconds.
+  - A "What happens" table in the editor spells out every case. Bursts
+    re-check before each press and keep their rhythm when they resume.
+    Verified live with `examples/conditions_check.rs`.
 - **Macros.** Steps for key/click (with hold time), hold down, release,
   wait (± random), type text, scroll, relative mouse move (optionally smooth
   over a duration), and cursor to (x, y). You can drag to reorder, duplicate,

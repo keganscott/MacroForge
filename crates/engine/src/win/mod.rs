@@ -94,6 +94,7 @@ impl Platform for WinPlatform {
     }
 
     fn start_hook(&self, shared: Arc<Shared>) -> Box<dyn HookHandle> {
+        shared.set_cursor_probe(sys::cursor_visible);
         Box::new(hook::HookThread::start(shared))
     }
 

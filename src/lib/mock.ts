@@ -121,6 +121,7 @@ export function mockBackend(): Backend {
   const recSubs = new Set<(n: number) => void>();
   const hudSubs = new Set<(h: Hud) => void>();
   const activitySubs = new Set<(h: Hud) => void>();
+  const cursorSubs = new Set<(t: { left: number; visible: boolean }) => void>();
   let recording: Step[] | null = null;
   let monitorOn = false;
   const t0 = performance.now();
@@ -272,6 +273,14 @@ export function mockBackend(): Backend {
     async openDataDir() {},
     async testSound() {},
     async quitApp() {},
+    async cursorTest(seconds) {
+      // Browser preview: count down, flipping as if a menu opened halfway.
+      for (let left = seconds; left >= 0; left--) {
+        cursorSubs.forEach((cb) => cb({ left, visible: left < seconds / 2 && left > 0 }));
+        if (left) await wait(1000);
+      }
+    },
+    onCursorTest: (cb) => (cursorSubs.add(cb), () => cursorSubs.delete(cb)),
     async previewHud() {
       hudSubs.forEach((cb) => cb({ text: "Auto-clicker on", on: true }));
     },

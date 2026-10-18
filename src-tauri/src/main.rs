@@ -179,6 +179,7 @@ fn main() {
             commands::preview_hud,
             commands::test_sound,
             commands::quit_app,
+            commands::cursor_test,
         ])
         .build(tauri::generate_context!())
         .expect("error while building MacroForge");

@@ -170,10 +170,23 @@ impl Loop {
 }
 
 /// Play a macro `lp` times. A `finish` request ends it after the current pass.
-pub fn run_macro(steps: &[Step], lp: Loop, out: &dyn Output, cx: &mut Ctx) {
+/// `ok` is checked before every pass (the binding's conditions): a counted
+/// run ends when it fails; a looping one waits, keys released, until it
+/// holds again.
+pub fn run_macro(steps: &[Step], lp: Loop, out: &dyn Output, cx: &mut Ctx, ok: &dyn Fn() -> bool) {
     let mut held = Held::new(out);
     let mut pass = 0u32;
     loop {
+        if !ok() {
+            if matches!(lp, Loop::Times(_)) {
+                break;
+            }
+            held.release_all();
+            if cx.wait(10.0) {
+                break;
+            }
+            continue;
+        }
         if play_steps(steps, out, &mut held, cx) {
             break;
         }
@@ -217,6 +230,10 @@ pub fn rapid_hold(hold_ms: f64, period: f64) -> f64 {
 
 /// Turbo / auto-click: tap `output` at `rate` per second until stopped.
 /// `on_press` gets how late (ms) each press was against its schedule.
+/// `ok` is checked before every press (the binding's conditions): while it
+/// fails, presses are skipped but the rhythm keeps going, so firing picks up
+/// on the beat the moment it holds again.
+#[allow(clippy::too_many_arguments)]
 pub fn run_rapid(
     output: Input,
     rate: f64,
@@ -225,6 +242,7 @@ pub fn run_rapid(
     out: &dyn Output,
     cx: &mut Ctx,
     on_press: &mut dyn FnMut(f64),
+    ok: &dyn Fn() -> bool,
 ) {
     let mut held = Held::new(out);
     let period = 1000.0 / rate.max(0.01);
@@ -232,13 +250,15 @@ pub fn run_rapid(
     let jitter = period * (jitter_pct / 100.0);
     loop {
         let start = cx.t;
-        on_press((now_ms() - start).max(0.0));
-        held.press(output);
-        if !input::is_momentary(output) {
-            if hold > 0.0 && cx.wait(hold) {
-                break;
+        if ok() {
+            on_press((now_ms() - start).max(0.0));
+            held.press(output);
+            if !input::is_momentary(output) {
+                if hold > 0.0 && cx.wait(hold) {
+                    break;
+                }
+                held.release(output);
             }
-            held.release(output);
         }
         if cx.cancel.is_finishing() {
             break;
@@ -324,7 +344,7 @@ pub mod tests {
             Step::Text { text: "hi".into(), char_delay_ms: 0.0 },
             Step::MoveTo { x: 5, y: 6 },
         ];
-        run_macro(&steps, Loop::Times(1), &rec, &mut ctx(&mut w, &c));
+        run_macro(&steps, Loop::Times(1), &rec, &mut ctx(&mut w, &c), &|| true);
         assert_eq!(
             rec.events(),
             vec![
@@ -349,7 +369,7 @@ pub mod tests {
             .flat_map(|_| [Step::Press { input: 0x41, hold_ms: 0.0 }, Step::Delay { ms: 5.0, jitter_ms: 0.0 }])
             .collect();
         let start = now_ms();
-        run_macro(&steps, Loop::Times(1), &rec, &mut ctx(&mut w, &c));
+        run_macro(&steps, Loop::Times(1), &rec, &mut ctx(&mut w, &c), &|| true);
         let total = now_ms() - start;
         assert!((49.0..60.0).contains(&total), "10 x 5 ms took {total} ms");
     }
@@ -359,7 +379,7 @@ pub mod tests {
         let rec = Rec::default();
         let mut w = SpinWaiter { spin_ms: 1.0 };
         let c = Cancel::new();
-        run_macro(&[Step::Move { dx: 101, dy: -37, duration_ms: 10.0 }], Loop::Times(1), &rec, &mut ctx(&mut w, &c));
+        run_macro(&[Step::Move { dx: 101, dy: -37, duration_ms: 10.0 }], Loop::Times(1), &rec, &mut ctx(&mut w, &c), &|| true);
         let (sx, sy) = rec.events().iter().fold((0, 0), |(x, y), e| match e {
             Ev::Rel(dx, dy) => (x + dx, y + dy),
             _ => (x, y),
@@ -376,7 +396,7 @@ pub mod tests {
         let h = std::thread::spawn(move || {
             let mut w = SpinWaiter { spin_ms: 1.0 };
             let steps = vec![Step::Down { input: 0x57 }, Step::Press { input: 256, hold_ms: 10_000.0 }];
-            run_macro(&steps, Loop::Forever, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() });
+            run_macro(&steps, Loop::Forever, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &|| true);
         });
         std::thread::sleep(std::time::Duration::from_millis(30));
         c.stop();
@@ -392,7 +412,7 @@ pub mod tests {
         let (r2, c2) = (rec.clone(), c.clone());
         let h = std::thread::spawn(move || {
             let mut w = SpinWaiter { spin_ms: 2.0 };
-            run_rapid(256, 100.0, 3.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &mut |_| {});
+            run_rapid(256, 100.0, 3.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &mut |_| {}, &|| true);
         });
         std::thread::sleep(std::time::Duration::from_millis(205));
         c.stop();
@@ -422,7 +442,7 @@ pub mod tests {
         let h = std::thread::spawn(move || {
             let mut w = SpinWaiter { spin_ms: 2.0 };
             let mut late = Vec::new();
-            run_rapid(256, 50.0, 0.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &mut |l| late.push(l));
+            run_rapid(256, 50.0, 0.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &mut |l| late.push(l), &|| true);
             late
         });
         std::thread::sleep(std::time::Duration::from_millis(110));
@@ -439,13 +459,56 @@ pub mod tests {
     }
 
     #[test]
+    fn rapid_skips_presses_while_conditions_fail_and_keeps_the_beat() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let rec = std::sync::Arc::new(Rec::default());
+        let c = std::sync::Arc::new(Cancel::new());
+        let gate = std::sync::Arc::new(AtomicBool::new(true));
+        let (r2, c2, g2) = (rec.clone(), c.clone(), gate.clone());
+        let h = std::thread::spawn(move || {
+            let mut w = SpinWaiter { spin_ms: 2.0 };
+            let ok = || g2.load(Ordering::Relaxed);
+            run_rapid(256, 100.0, 0.0, 0.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(1), t: now_ms() }, &mut |_| {}, &ok);
+        });
+        std::thread::sleep(std::time::Duration::from_millis(55));
+        gate.store(false, Ordering::Relaxed); // e.g. aim released / menu opened
+        let paused_at = rec.events().len();
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        let during = rec.events().len() - paused_at;
+        gate.store(true, Ordering::Relaxed);
+        std::thread::sleep(std::time::Duration::from_millis(55));
+        c.stop();
+        h.join().unwrap();
+        assert!(during <= 2, "{during} events while paused (at most the press in flight)");
+        let downs: Vec<f64> =
+            rec.evs.lock().iter().filter(|(_, e)| *e == Ev::In(256, true)).map(|(t, _)| *t).collect();
+        assert!(downs.len() >= 8, "{} presses", downs.len());
+        // Resumed on the 10 ms grid, not at a random moment.
+        let first = downs[0];
+        for d in &downs {
+            let off = (d - first) % 10.0;
+            assert!(off < 2.0 || off > 8.0, "press {d} is {off} ms off the beat");
+        }
+        assert_eq!(rec.events().last(), Some(&Ev::In(256, false)));
+    }
+
+    #[test]
+    fn macro_waits_while_conditions_fail() {
+        let rec = Rec::default();
+        let mut w = SpinWaiter { spin_ms: 1.0 };
+        let c = Cancel::new();
+        run_macro(&[Step::Press { input: 0x41, hold_ms: 0.0 }], Loop::Times(3), &rec, &mut ctx(&mut w, &c), &|| false);
+        assert!(rec.events().is_empty(), "a counted run ends when its conditions fail");
+    }
+
+    #[test]
     fn finish_ends_after_the_pass() {
         let rec = Rec::default();
         let mut w = SpinWaiter { spin_ms: 1.0 };
         let c = Cancel::new();
         c.finish();
         let steps = vec![Step::Press { input: 0x41, hold_ms: 0.0 }];
-        run_macro(&steps, Loop::Forever, &rec, &mut ctx(&mut w, &c));
+        run_macro(&steps, Loop::Forever, &rec, &mut ctx(&mut w, &c), &|| true);
         assert_eq!(rec.events(), vec![Ev::In(0x41, true), Ev::In(0x41, false)]);
     }
 }

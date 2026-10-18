@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::input::{self, Input, INPUT_COUNT};
-use crate::model::{Action, Data, Repress, Step, Trigger, TriggerMode};
+use crate::model::{Action, Conditions, Data, Repress, Step, Trigger, TriggerMode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Compiled {
@@ -26,6 +26,7 @@ pub struct Bound {
     pub label: String,
     pub trigger: Trigger,
     pub action: Compiled,
+    pub conditions: Conditions,
     /// From a profile limited to certain apps (wins over an "everywhere" one).
     pub specific: bool,
 }
@@ -55,9 +56,16 @@ impl Table {
     /// The binding `code` fires with modifiers `mods` held, if any. Slots are
     /// sorted most specific first, so the first match wins.
     pub fn lookup(&self, code: Input, mods: u8) -> Option<&Arc<Bound>> {
+        self.lookup_where(code, mods, |_| true)
+    }
+
+    /// The first matching binding that `allowed` accepts. A binding whose
+    /// conditions are not met is skipped, so the next one on that key (or
+    /// the plain key itself) gets the press instead.
+    pub fn lookup_where(&self, code: Input, mods: u8, mut allowed: impl FnMut(&Bound) -> bool) -> Option<&Arc<Bound>> {
         let slot = self.slots.get(code as usize)?;
         let mods = mods & !input::modifier_bit(code);
-        slot.iter().find(|b| b.required_mods() & mods == b.required_mods())
+        slot.iter().find(|b| b.required_mods() & mods == b.required_mods() && allowed(b))
     }
 
     pub fn contains(&self, id: &str) -> bool {
@@ -121,7 +129,10 @@ pub fn compile(data: &Data, exe: Option<&str>) -> Table {
             if input::is_wheel(trigger.input) && trigger.mode == TriggerMode::Hold {
                 trigger.mode = TriggerMode::Press;
             }
-            if input::is_mouse_button(trigger.input) || input::is_wheel(trigger.input) {
+            if input::is_mouse_button(trigger.input)
+                || input::is_wheel(trigger.input)
+                || input::is_mouse_button(b.conditions.while_held)
+            {
                 table.uses_mouse = true;
             }
             let label = if b.name.is_empty() { fallback } else { b.name.clone() };
@@ -131,6 +142,7 @@ pub fn compile(data: &Data, exe: Option<&str>) -> Table {
                 label,
                 trigger,
                 action,
+                conditions: b.conditions,
                 specific: !p.apps.is_empty(),
             });
             table.slots[trigger.input as usize].push(bound.clone());

@@ -180,3 +180,26 @@ pub fn window_apps() -> Vec<(String, String)> {
     out.sort();
     out
 }
+
+/// Is the mouse cursor showing right now? Games hide it during gameplay and
+/// show it in the inventory, map and menus, which is what "Pause in menus"
+/// keys off. Treated as hidden: no cursor, a null cursor image (how many
+/// games hide it), or a cursor pinned to a tiny clip rectangle (mouse-look).
+/// One quick user32 call, made only for bindings that use it.
+pub fn cursor_visible() -> bool {
+    use windows_sys::Win32::Foundation::RECT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetClipCursor, GetCursorInfo, CURSORINFO, CURSOR_SHOWING};
+    // SAFETY: plain queries into local structs.
+    unsafe {
+        let mut ci: CURSORINFO = std::mem::zeroed();
+        ci.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
+        if GetCursorInfo(&mut ci) == 0 || ci.flags & CURSOR_SHOWING == 0 || ci.hCursor.is_null() {
+            return false;
+        }
+        let mut r: RECT = std::mem::zeroed();
+        if GetClipCursor(&mut r) != 0 && (r.right - r.left <= 4 || r.bottom - r.top <= 4) {
+            return false;
+        }
+        true
+    }
+}
