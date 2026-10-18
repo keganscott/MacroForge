@@ -508,7 +508,9 @@ impl Data {
                 .filter(|a| !a.is_empty() && a.len() <= 260 && !a.contains(['/', '\\']))
                 .take(64)
                 .collect();
-            p.apps.dedup();
+            // Duplicates anywhere in the list, keeping the first of each.
+            let mut seen = std::collections::HashSet::new();
+            p.apps.retain(|a| seen.insert(a.clone()));
             let mut ids = std::collections::HashSet::new();
             let before = p.bindings.len();
             p.bindings.truncate(500);
@@ -613,7 +615,7 @@ mod tests {
             action: Action::Remap { output: 9999, mods: 0 },
             ..Default::default()
         });
-        d.profiles[0].apps = vec!["  CS2.exe ".into(), "..\\evil".into()];
+        d.profiles[0].apps = vec!["  CS2.exe ".into(), "..\\evil".into(), "game.exe".into(), "cs2.exe".into()];
         d.macros.push(Macro {
             id: "m".into(),
             steps: vec![Step::Delay { ms: -5.0, jitter_ms: 9.0 }, Step::Wheel { delta: 0, horizontal: false }],
@@ -623,7 +625,7 @@ mod tests {
         assert_eq!(dropped, 2);
         let b = &d.profiles[0].bindings[0];
         assert_eq!(b.action, Action::Rapid { output: 256, rate: 10.0, hold_ms: MAX_HOLD_MS, jitter_pct: 50.0 });
-        assert_eq!(d.profiles[0].apps, vec!["cs2.exe"]);
+        assert_eq!(d.profiles[0].apps, vec!["cs2.exe", "game.exe"], "non-adjacent duplicates go too");
         assert_eq!(d.macros[0].steps, vec![Step::Delay { ms: 0.0, jitter_ms: 0.0 }]);
     }
 

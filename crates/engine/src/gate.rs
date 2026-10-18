@@ -203,12 +203,15 @@ impl Gate {
     /// Modifiers held right now, after dropping any the system says are up:
     /// a release can go missing (the secure desktop of Win+L or an admin
     /// prompt has no hooks), which would otherwise leave Alt "held" forever.
-    /// Keys MacroForge itself swallowed are trusted as they are.
-    fn verified_mods(&mut self, sh: &Shared) -> u8 {
+    /// Keys MacroForge itself swallowed are trusted as they are, and so is
+    /// `current`: the key being pressed right now, which Windows does not
+    /// report as held until the hook has returned. Only modifiers marked
+    /// down are probed, so with none held this costs nothing.
+    fn verified_mods(&mut self, sh: &Shared, current: Input) -> u8 {
         if let Some(probe) = sh.key_probe.get() {
             for vk in [0x10u16, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C] {
                 let i = vk as usize;
-                if self.down[i] && self.matched[i].is_none() && !self.swallow_up[i] && !probe(vk) {
+                if vk != current && self.down[i] && self.matched[i].is_none() && !self.swallow_up[i] && !probe(vk) {
                     self.down[i] = false;
                     sh.held[i].store(false, Ordering::Relaxed);
                 }
@@ -243,7 +246,9 @@ impl Gate {
             self.down[i] = down;
             sh.held[i].store(down, Ordering::Relaxed);
         }
-        let mods = self.mods();
+        // A new press double-checks the modifiers marked held, so one whose
+        // release was lost (Win+L, an admin prompt) can't shadow bindings.
+        let mods = if down && !repeat { self.verified_mods(sh, code) } else { self.mods() };
         let t = now_ms();
 
         if sh.monitor.load(Ordering::Relaxed) && !repeat {
@@ -272,7 +277,7 @@ impl Gate {
                 return false;
             }
             let chosen = if down && !repeat && !is_mod {
-                Some((code, self.verified_mods(sh)))
+                Some((code, mods))
             } else if !down && self.capture_mod == Some(code) {
                 // A modifier pressed and released on its own is the trigger.
                 Some((code, 0))
@@ -326,7 +331,8 @@ impl Gate {
                     let ends = matches!(&self.matched[j], Some(b) if b.conditions.while_held == code && b.trigger.mode == TriggerMode::Hold);
                     if ends {
                         let b = self.matched[j].take().unwrap();
-                        self.conditional -= 1;
+                        // Saturating: a miscount must never panic or wrap in the hook.
+                        self.conditional = self.conditional.saturating_sub(1);
                         self.swallow_up[j] = !b.trigger.passthrough;
                         let _ = sh.tx.send(HookMsg::Trigger { bound: b, down: false, repeat: false, t });
                     }
@@ -335,7 +341,7 @@ impl Gate {
             return match self.matched[i].take() {
                 Some(b) => {
                     if b.conditions.while_held != 0 {
-                        self.conditional -= 1;
+                        self.conditional = self.conditional.saturating_sub(1);
                     }
                     let swallow = !b.trigger.passthrough;
                     let _ = sh.tx.send(HookMsg::Trigger { bound: b, down: false, repeat: false, t });
@@ -524,6 +530,16 @@ mod tests {
     }
 
     #[test]
+    fn a_modifier_whose_release_was_missed_does_not_shadow_bindings() {
+        let (sh, rx, mut g) = setup(vec![b("alt", 0x41, crate::input::MOD_ALT, false), b("plain", 0x41, 0, false)]);
+        sh.set_key_probe(NOTHING_HELD);
+        // Alt went down, and its release never reached the hook.
+        assert!(!g.on_input(&sh, 0xA4, true, Origin::Physical), "Alt itself is kept: it is the key being pressed");
+        assert!(g.on_input(&sh, 0x41, true, Origin::Physical));
+        assert_eq!(triggers(&rx), vec![("plain".into(), true, false)]);
+    }
+
+    #[test]
     fn capture_takes_chords_and_lone_modifiers() {
         let (sh, rx, mut g) = setup(vec![]);
         sh.capture.store(true, Ordering::Relaxed);
@@ -588,6 +604,31 @@ mod tests {
         assert!(!g.on_input(&sh, 257, true, Origin::Physical));
         assert!(!g.on_input(&sh, 256, false, Origin::Physical));
         assert!(triggers(&rx).is_empty());
+    }
+
+    #[test]
+    fn aim_and_trigger_released_in_any_order() {
+        let aim = Conditions { while_held: 257, pause_in_menus: false };
+        let (sh, rx, mut g) = setup(vec![rapid("r", 256, TriggerMode::Hold, aim)]);
+        // Trigger let go before aim: the normal release path ends it.
+        assert!(!g.on_input(&sh, 257, true, Origin::Physical));
+        assert!(g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(g.on_input(&sh, 256, false, Origin::Physical));
+        assert_eq!(triggers(&rx), vec![("r".into(), true, false), ("r".into(), false, false)]);
+        // Re-pressed while still aiming, then the table is swapped mid-hold.
+        assert!(g.on_input(&sh, 256, true, Origin::Physical));
+        *sh.table.write() = Arc::new(crate::table::Table::empty());
+        // Aim let go first: still ends the held binding exactly once.
+        assert!(!g.on_input(&sh, 257, false, Origin::Physical));
+        assert!(g.on_input(&sh, 256, false, Origin::Physical), "its release still goes to the binding");
+        assert_eq!(triggers(&rx), vec![("r".into(), true, false), ("r".into(), false, false)]);
+        // Nothing left counted: more releases are plain and nothing panics.
+        assert!(!g.on_input(&sh, 257, true, Origin::Physical));
+        assert!(!g.on_input(&sh, 257, false, Origin::Physical));
+        assert!(!g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(!g.on_input(&sh, 256, false, Origin::Physical));
+        assert!(triggers(&rx).is_empty());
+        assert_eq!(g.conditional, 0);
     }
 
     #[test]

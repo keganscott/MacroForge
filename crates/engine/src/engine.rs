@@ -243,14 +243,14 @@ struct Run {
 
 /// Latency samples, newest last, capped.
 #[derive(Default)]
-struct Latency(Vec<f64>);
+struct Latency(std::collections::VecDeque<f64>);
 
 impl Latency {
     fn push(&mut self, us: f64) {
         if self.0.len() >= 512 {
-            self.0.remove(0);
+            self.0.pop_front();
         }
-        self.0.push(us);
+        self.0.push_back(us);
     }
 }
 
@@ -265,6 +265,13 @@ pub struct Engine {
 
 impl Engine {
     pub fn start(data: Data, platform: Arc<dyn Platform>, notifier: Arc<dyn Notifier>) -> Engine {
+        let armed = data.settings.armed_on_launch;
+        Engine::start_armed(data, platform, notifier, armed)
+    }
+
+    /// Like `start`, with the starting on / off state given separately (the
+    /// tray hand-off carries it over), so the saved preference is untouched.
+    pub fn start_armed(data: Data, platform: Arc<dyn Platform>, notifier: Arc<dyn Notifier>, armed: bool) -> Engine {
         let (hook_tx, hook_rx) = unbounded();
         let (tx, rx) = unbounded();
         let shared = Arc::new(Shared::new(hook_tx));
@@ -272,7 +279,7 @@ impl Engine {
         let rhythm = Arc::new(Mutex::new(Rhythm::default()));
         let hook = platform.start_hook(shared.clone());
         let mut core = Core {
-            armed: data.settings.armed_on_launch,
+            armed,
             data,
             platform: platform.clone(),
             notifier,
@@ -374,7 +381,7 @@ impl Engine {
             send_failures: self.platform.send_failures(),
             ..Default::default()
         };
-        let mut v = self.latency.lock().0.clone();
+        let mut v: Vec<f64> = self.latency.lock().0.iter().copied().collect();
         if !v.is_empty() {
             v.sort_by(|a, b| a.total_cmp(b));
             let pct = |p: f64| v[((v.len() - 1) as f64 * p).round() as usize];
@@ -1147,5 +1154,18 @@ mod tests {
         assert!(h.join().unwrap());
         assert_eq!(got, Some((0x46, input::MOD_CTRL)));
         let _ = r.key(0, false);
+    }
+
+    #[test]
+    fn start_armed_overrides_only_this_launch() {
+        // Saved as "on when MacroForge opens", handed off as off.
+        let d = data(vec![]);
+        assert!(d.settings.armed_on_launch);
+        let fake = Arc::new(Fake { out: Arc::new(Rec::default()), shared: Mutex::new(None) });
+        let off = Engine::start_armed(d.clone(), fake, Arc::new(Sink::default()), false);
+        assert!(!off.status().armed);
+        let fake = Arc::new(Fake { out: Arc::new(Rec::default()), shared: Mutex::new(None) });
+        let on = Engine::start(d, fake, Arc::new(Sink::default()));
+        assert!(on.status().armed);
     }
 }

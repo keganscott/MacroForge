@@ -54,11 +54,13 @@ fn main() {
     };
 
     let dir = store::default_dir();
-    let mut loaded = store::load(&dir);
-    // A tray hand-off (below) passes the on / off state along.
-    if let Some(a) = args.iter().find_map(|a| a.strip_prefix("--armed=")) {
-        loaded.data.settings.armed_on_launch = a == "1";
-    }
+    let loaded = store::load(&dir);
+    // A tray hand-off (below) passes the on / off state along. It decides
+    // only this launch; the saved "Bindings on when MacroForge opens" stays.
+    let start_armed = args
+        .iter()
+        .find_map(|a| a.strip_prefix("--armed="))
+        .map_or(loaded.data.settings.armed_on_launch, |a| a == "1");
 
     let app = tauri::Builder::default()
         .setup(move |app| {
@@ -66,12 +68,12 @@ fn main() {
             let notifier = Arc::new(notify::UiNotifier::new(handle.clone(), &loaded.data.settings));
             #[cfg(windows)]
             let platform = Arc::new(macroforge_engine::win::WinPlatform::new());
-            let engine = Arc::new(Engine::start(loaded.data.clone(), platform, notifier.clone()));
+            let engine = Arc::new(Engine::start_armed(loaded.data.clone(), platform, notifier.clone(), start_armed));
             let start_hidden = minimized_arg || loaded.data.settings.start_minimized;
 
             // Tray: open, arm / disarm, stop everything, quit.
             let open = MenuItem::with_id(app, "open", "Open MacroForge", true, None::<&str>)?;
-            let armed = CheckMenuItem::with_id(app, "armed", "Bindings on", true, loaded.data.settings.armed_on_launch, None::<&str>)?;
+            let armed = CheckMenuItem::with_id(app, "armed", "Bindings on", true, start_armed, None::<&str>)?;
             let stop = MenuItem::with_id(app, "stop", "Stop everything", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
@@ -98,7 +100,7 @@ fn main() {
             if let Some(icon) = app.default_window_icon() {
                 tray = tray.icon(icon.clone());
             }
-            notifier.set_tray(tray.build(app)?, armed, loaded.data.settings.armed_on_launch);
+            notifier.set_tray(tray.build(app)?, armed, start_armed);
 
             // State first, windows second: a page that loads before the state
             // exists gets "state not managed" from its first command. The

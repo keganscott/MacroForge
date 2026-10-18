@@ -5,8 +5,11 @@ import type { Backend } from "./ipc";
 import { vkFromDomCode, MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, MOUSE_X1, MOUSE_X2, MOD_CTRL, MOD_SHIFT, MOD_ALT } from "./keys";
 import type { Data, Hud, MonitorEvent, Status, Step } from "./types";
 
+/** Keep equal to `DATA_VERSION` in crates/engine/src/model.rs: the mock skips `sanitize`'s migrations. */
+const DATA_VERSION = 3;
+
 const defaults = (): Data => ({
-  version: 2,
+  version: DATA_VERSION,
   profiles: [
     {
       id: "global",
