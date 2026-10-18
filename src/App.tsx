@@ -25,6 +25,21 @@ export function App() {
     boot().catch((e) => setError(String(e)));
   }, []);
 
+  // Animations: on unless the user turned them off here (or chose to follow
+  // Windows and Windows' Animation effects are off).
+  const motion = useStore((s) => s.data?.settings.motion ?? "full");
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => {
+      const reduced = motion === "off" || (motion === "system" && mq.matches);
+      if (reduced) document.documentElement.dataset.motion = "reduced";
+      else delete document.documentElement.dataset.motion;
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [motion]);
+
   // Nothing animates while MacroForge is in the background.
   const active = useActive();
   useEffect(() => {

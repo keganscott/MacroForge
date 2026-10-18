@@ -203,10 +203,10 @@ export function mockBackend(): Backend {
           done({ input: vk, mods: (e.ctrlKey ? MOD_CTRL : 0) | (e.shiftKey ? MOD_SHIFT : 0) | (e.altKey ? MOD_ALT : 0) });
         };
         const md = (e: MouseEvent) => {
-          // Left / right click work the UI, as in the real engine.
-          if (e.button === 0 || e.button === 2) return;
+          // Any button, left and right included, as in the real engine.
           const map = [MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, MOUSE_X1, MOUSE_X2];
           e.preventDefault();
+          e.stopPropagation();
           done({ input: map[e.button] ?? MOUSE_X1, mods: 0 });
         };
         window.addEventListener("keydown", kd, true);

@@ -203,3 +203,10 @@ pub fn cursor_visible() -> bool {
         true
     }
 }
+
+/// Is this virtual key physically held right now (as Windows sees it)?
+pub fn key_down(vk: u16) -> bool {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+    // SAFETY: a plain query.
+    unsafe { (GetAsyncKeyState(vk as i32) as u16 & 0x8000) != 0 }
+}

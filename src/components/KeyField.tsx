@@ -1,9 +1,9 @@
-// Setting a key: press it (captured by the engine's hook, so Mouse 4/5,
-// Print Screen and media keys all work), or pick it from the list. Left and
-// right click are always picked, since clicking is how you use the app.
+// Setting a key: click Assign, then press it (captured by the engine's hook,
+// so mouse buttons, Print Screen and media keys all work, left and right
+// click included), or pick it from the list. Esc cancels.
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Keyboard, MousePointerClick, Search, X } from "lucide-react";
+import { ChevronDown, Keyboard, MousePointerClick, Search } from "lucide-react";
 
 import { KEY_GROUPS, MODS, keyName, MOUSE_LEFT, MOUSE_RIGHT } from "../lib/keys";
 import { backend } from "../store";
@@ -54,37 +54,45 @@ export function KeyField({
     }
   };
 
-  const cancel = () => void backend().cancelCapture();
-
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={capturing ? cancel : capture}
-          aria-label={capturing ? `${label}: press a key, or click to cancel` : `${label}: ${value.input ? keyName(value.input) : "not set"}. Click, then press a key`}
-          className={cx(
-            "group flex items-center gap-3 rounded-xl border px-3 text-left transition-colors",
-            size === "lg" ? "min-h-14 min-w-64" : "min-h-11 min-w-44",
-            capturing ? "border-lime bg-lime/5" : "border-line-strong bg-surface-2 hover:border-violet",
-          )}
-        >
-          {capturing ? (
-            <span className="flex items-center gap-2 text-sm font-bold text-lime">
-              <Keyboard aria-hidden className="size-4 animate-pulse" />
-              Press any key or mouse button…
-            </span>
-          ) : (
-            <>
-              <Keycap input={value.input} mods={value.mods} empty="Click to set" />
-              <span className="ml-auto pl-2 text-xs font-semibold text-ink-faint group-hover:text-ink-muted">Change</span>
-            </>
-          )}
-        </button>
         {capturing ? (
-          <button type="button" onClick={cancel} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-bold text-ink-muted hover:bg-surface-2 hover:text-ink">
-            <X aria-hidden className="size-3.5" /> Cancel (Esc)
-          </button>
+          // Listening: the next key or mouse button (left / right click too)
+          // is assigned, so there is nothing here to click; Esc cancels.
+          <div
+            role="status"
+            aria-live="polite"
+            className={cx(
+              "flex items-center gap-3 rounded-xl border border-lime bg-lime/10 px-4 shadow-[0_0_24px_-6px_var(--color-lime)]",
+              size === "lg" ? "min-h-14 min-w-72" : "min-h-11 min-w-56",
+            )}
+          >
+            <span aria-hidden className="live-dot size-2.5 rounded-full bg-lime" />
+            <span className="text-sm font-bold text-lime">Press any key or mouse button</span>
+            <span className="ml-auto rounded-md border border-lime/40 px-1.5 py-0.5 font-mono text-[10px] font-bold text-lime">Esc cancels</span>
+          </div>
+        ) : (
+          <div
+            className={cx(
+              "flex items-center gap-3 rounded-xl border border-line-strong bg-surface-2 pr-1.5 pl-3",
+              size === "lg" ? "min-h-14 min-w-72" : "min-h-11 min-w-56",
+            )}
+          >
+            <Keycap input={value.input} mods={value.mods} empty="Not set" />
+            <button
+              type="button"
+              onClick={capture}
+              aria-label={`${label}: assign. Click, then press the key or mouse button you want`}
+              className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg bg-violet px-3 text-xs font-bold text-on-accent hover:bg-violet-strong"
+            >
+              <Keyboard aria-hidden className="size-3.5" />
+              {value.input ? "Reassign" : "Assign"}
+            </button>
+          </div>
+        )}
+        {capturing ? (
+          <span className="text-xs text-ink-muted">The very next press is assigned, including left or right click.</span>
         ) : (
           <>
             {quick.map((q) => (

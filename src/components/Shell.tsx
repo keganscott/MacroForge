@@ -1,4 +1,4 @@
-import { createContext, useContext, useLayoutEffect, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Activity, Gamepad2, Gauge, Keyboard, LayoutGrid, ListVideo, OctagonX, Power, Settings as SettingsIcon, Wand2 } from "lucide-react";
 
 import { comboName } from "../lib/keys";
@@ -185,7 +185,28 @@ function TopBar() {
 
 export function MasterSwitch({ large = false }: { large?: boolean }) {
   const armed = useStore((s) => s.status?.armed ?? false);
+  // Each change (from here, the tray or the hotkey) plays the moment once:
+  // a lime ring bursting out when it comes on, a grey ring folding in when
+  // it goes off. Not on first show.
+  const [pulse, setPulse] = useState<{ n: number; on: boolean } | null>(null);
+  const prev = useRef(armed);
+  useEffect(() => {
+    if (prev.current === armed) return;
+    prev.current = armed;
+    setPulse((p) => ({ n: (p?.n ?? 0) + 1, on: armed }));
+  }, [armed]);
   return (
+    <span className="relative inline-flex">
+      {pulse && (
+        <span
+          key={pulse.n}
+          aria-hidden
+          className={cx(
+            "pointer-events-none absolute inset-0 rounded-full border-2",
+            pulse.on ? "border-lime shadow-[0_0_24px_var(--color-lime)] animate-switch-on" : "border-ink-faint animate-switch-off",
+          )}
+        />
+      )}
     <button
       type="button"
       role="switch"
@@ -197,7 +218,7 @@ export function MasterSwitch({ large = false }: { large?: boolean }) {
         armed ? "border-lime bg-lime text-black" : "border-line-strong bg-surface-2 text-ink-muted hover:text-ink",
       )}
     >
-      <Power aria-hidden className={large ? "size-5" : "size-4"} strokeWidth={2.4} />
+      <Power key={pulse?.n ?? 0} aria-hidden className={cx(large ? "size-5" : "size-4", pulse && "animate-switch-icon")} strokeWidth={2.4} />
       {armed ? "Bindings on" : "Bindings off"}
       {armed && (
         <span
@@ -207,6 +228,7 @@ export function MasterSwitch({ large = false }: { large?: boolean }) {
         />
       )}
     </button>
+    </span>
   );
 }
 

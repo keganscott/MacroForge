@@ -72,6 +72,9 @@ pub struct Shared {
     held: Vec<AtomicBool>,
     /// "Is the mouse cursor showing?" from the platform (menus, inventory).
     cursor_probe: std::sync::OnceLock<fn() -> bool>,
+    /// "Is this key physically down?" from the platform, to catch a modifier
+    /// whose release the hook never saw (Win+L, an admin prompt).
+    key_probe: std::sync::OnceLock<fn(Input) -> bool>,
 }
 
 impl Shared {
@@ -93,7 +96,12 @@ impl Shared {
             max_ns: AtomicU64::new(0),
             held: (0..INPUT_COUNT).map(|_| AtomicBool::new(false)).collect(),
             cursor_probe: std::sync::OnceLock::new(),
+            key_probe: std::sync::OnceLock::new(),
         }
+    }
+
+    pub fn set_key_probe(&self, probe: fn(Input) -> bool) {
+        let _ = self.key_probe.set(probe);
     }
 
     /// Install the platform's cursor check (once, at hook start).
@@ -190,6 +198,23 @@ impl Gate {
         m
     }
 
+    /// Modifiers held right now, after dropping any the system says are up:
+    /// a release can go missing (the secure desktop of Win+L or an admin
+    /// prompt has no hooks), which would otherwise leave Alt "held" forever.
+    /// Keys MacroForge itself swallowed are trusted as they are.
+    fn verified_mods(&mut self, sh: &Shared) -> u8 {
+        if let Some(probe) = sh.key_probe.get() {
+            for vk in [0x10u16, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C] {
+                let i = vk as usize;
+                if self.down[i] && self.matched[i].is_none() && !self.swallow_up[i] && !probe(vk) {
+                    self.down[i] = false;
+                    sh.held[i].store(false, Ordering::Relaxed);
+                }
+            }
+        }
+        self.mods()
+    }
+
     pub fn is_down(&self, code: Input) -> bool {
         self.down.get(code as usize).copied().unwrap_or(false)
     }
@@ -229,11 +254,9 @@ impl Gate {
         }
 
         if sh.capture.load(Ordering::Acquire) {
-            // Left / right click work the UI (Cancel, the key list), so they
-            // are never captured; Esc cancels (reported as input 0).
-            if code == input::MOUSE_LEFT || code == input::MOUSE_RIGHT {
-                return false;
-            }
+            // After Assign, the very next key or button is the one, left and
+            // right click included (its release is swallowed too, so the
+            // click never lands on the app). Esc cancels (reported as input 0).
             if code == 0x1B && down && !repeat && sh.capture.swap(false, Ordering::AcqRel) {
                 self.capture_mod = None;
                 let _ = sh.tx.send(HookMsg::Captured { input: 0, mods: 0 });
@@ -247,7 +270,7 @@ impl Gate {
                 return false;
             }
             let chosen = if down && !repeat && !is_mod {
-                Some((code, mods))
+                Some((code, self.verified_mods(sh)))
             } else if !down && self.capture_mod == Some(code) {
                 // A modifier pressed and released on its own is the trigger.
                 Some((code, 0))
@@ -466,15 +489,33 @@ mod tests {
         assert!(g.on_input(&sh, 0x91, true, Origin::Physical));
         assert!(g.on_input(&sh, 0x91, false, Origin::Physical));
         sh.capture.store(true, Ordering::Relaxed);
-        assert!(!g.on_input(&sh, 256, true, Origin::Physical));
-        assert!(!g.on_input(&sh, 256, false, Origin::Physical));
         assert!(g.on_input(&sh, 259, true, Origin::Physical));
         assert!(g.on_input(&sh, 259, false, Origin::Physical));
-        assert!(!g.on_input(&sh, 259, true, Origin::Physical));
+        assert!(!g.on_input(&sh, 259, true, Origin::Physical), "capture is one press only");
         let msgs: Vec<_> = rx.try_iter().collect();
         assert!(matches!(msgs[0], HookMsg::MasterHotkey));
         assert!(matches!(msgs[1], HookMsg::Captured { input: 259, mods: 0 }));
         assert_eq!(msgs.len(), 2);
+    }
+
+    static NOTHING_HELD: fn(Input) -> bool = |_| false;
+
+    #[test]
+    fn capture_ignores_a_modifier_whose_release_was_missed() {
+        let (sh, rx, mut g) = setup(vec![]);
+        sh.set_key_probe(NOTHING_HELD);
+        // Alt went down, and its release never reached the hook.
+        assert!(!g.on_input(&sh, 0xA4, true, Origin::Physical));
+        sh.capture.store(true, Ordering::Relaxed);
+        assert!(g.on_input(&sh, 0x7C, true, Origin::Physical));
+        let got: Vec<_> = rx
+            .try_iter()
+            .filter_map(|m| match m {
+                HookMsg::Captured { input, mods } => Some((input, mods)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(got, vec![(0x7C, 0)], "F13, not Alt + F13");
     }
 
     #[test]
@@ -486,8 +527,9 @@ mod tests {
         assert!(g.on_input(&sh, 0x46, false, Origin::Physical));
         assert!(!g.on_input(&sh, 0xA2, false, Origin::Physical));
         sh.capture.store(true, Ordering::Relaxed);
-        assert!(!g.on_input(&sh, 256, true, Origin::Physical), "left click is never captured");
-        assert!(!g.on_input(&sh, 256, false, Origin::Physical));
+        assert!(g.on_input(&sh, 256, true, Origin::Physical), "left click can be assigned");
+        assert!(g.on_input(&sh, 256, false, Origin::Physical), "and never lands on the app");
+        sh.capture.store(true, Ordering::Relaxed);
         assert!(!g.on_input(&sh, 0xA0, true, Origin::Physical));
         assert!(!g.on_input(&sh, 0xA0, false, Origin::Physical));
         sh.capture.store(true, Ordering::Relaxed);
@@ -500,7 +542,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        assert_eq!(got, vec![(0x46, MOD_CTRL), (0xA0, 0), (0, 0)]);
+        assert_eq!(got, vec![(0x46, MOD_CTRL), (256, 0), (0xA0, 0), (0, 0)]);
     }
 
     fn rapid(id: &str, input: Input, mode: TriggerMode, c: Conditions) -> Binding {

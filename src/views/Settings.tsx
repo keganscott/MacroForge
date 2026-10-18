@@ -21,6 +21,8 @@ async function testSound(on: boolean) {
   await backend().testSound(on);
 }
 
+const windowsReducesMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
 export function SettingsView() {
   const s = useStore((st) => st.data!.settings);
   const dir = useStore((st) => st.dataDir);
@@ -163,7 +165,24 @@ export function SettingsView() {
                   />
                 ))}
               </div>
-              <p className="mt-3 text-xs text-ink-muted">Signal cyan is MacroForge’s own; the others are the family colours shared with PeakTweaks and Crosshair Forge. Lime always means on.</p>
+              <p className="mt-5 mb-2 text-xs font-bold">Animations</p>
+              <Segmented
+                size="sm"
+                label="Animations"
+                value={s.motion ?? "full"}
+                onChange={(motion) => setSettings({ motion })}
+                options={[
+                  { value: "full", label: "On" },
+                  { value: "system", label: "Follow Windows" },
+                  { value: "off", label: "Off" },
+                ]}
+              />
+              <p className="mt-2 text-xs text-ink-muted">
+                {windowsReducesMotion
+                  ? "Windows’ Animation effects are off on this PC. “Follow Windows” would switch MacroForge’s animations off too."
+                  : "The on / off moment, the signal trace and the live pulses. They pause whenever MacroForge is in the background."}
+              </p>
+              <p className="mt-4 text-xs text-ink-muted">Signal cyan is MacroForge’s own; the others are the family colours shared with PeakTweaks and Crosshair Forge. Lime always means on.</p>
             </Card>
           </section>
 

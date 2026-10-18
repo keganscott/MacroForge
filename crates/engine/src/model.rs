@@ -258,6 +258,8 @@ pub struct Settings {
     pub start_minimized: bool,
     pub start_with_windows: bool,
     pub accent: String,
+    /// Animations in the app: always, follow Windows' Animation effects, or never.
+    pub motion: Motion,
     /// Recorder: keep the real gaps between events, or use a fixed delay.
     pub record_timing: RecordTiming,
     pub record_fixed_delay_ms: f64,
@@ -284,6 +286,14 @@ pub enum HudPosition {
     TopRight,
     BottomLeft,
     BottomRight,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Motion {
+    Full,
+    System,
+    Off,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -322,6 +332,7 @@ impl Default for Settings {
             start_minimized: false,
             start_with_windows: false,
             accent: "signal".into(),
+            motion: Motion::Full,
             record_timing: RecordTiming::Real,
             record_fixed_delay_ms: 30.0,
             record_mouse_moves: false,

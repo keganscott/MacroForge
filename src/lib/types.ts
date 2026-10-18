@@ -94,6 +94,8 @@ export interface Settings {
   startMinimized: boolean;
   startWithWindows: boolean;
   accent: Accent;
+  /** Animations: always, follow Windows' Animation effects, or never. */
+  motion?: "full" | "system" | "off";
   recordTiming: RecordTiming;
   recordFixedDelayMs: number;
   recordMouseMoves: boolean;
