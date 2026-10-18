@@ -541,6 +541,14 @@ impl Data {
         let s = &mut self.settings;
         s.master_hotkey.sanitize();
         s.panic_hotkey.sanitize();
+        // Left or right click as the on / off or stop-all key would take
+        // over every normal click (and swallow it): back to the defaults.
+        let defaults = Settings::default();
+        for (hk, default) in [(&mut s.master_hotkey, defaults.master_hotkey), (&mut s.panic_hotkey, defaults.panic_hotkey)] {
+            if hk.input == input::MOUSE_LEFT || hk.input == input::MOUSE_RIGHT {
+                *hk = default;
+            }
+        }
         s.record_fixed_delay_ms = clamp_f(s.record_fixed_delay_ms, 0.0, 10_000.0, 30.0);
         s.sound_volume = s.sound_volume.min(100);
         let mut seen_games = std::collections::HashSet::new();
@@ -670,6 +678,19 @@ mod tests {
         // Old saves without the field load with both off.
         let b: Binding = serde_json::from_str(r#"{"id":"x","action":{"type":"block"}}"#).unwrap();
         assert!(!b.conditions.any());
+    }
+
+    #[test]
+    fn left_or_right_click_cannot_be_a_hotkey() {
+        let mut d = Data::default();
+        d.settings.master_hotkey = Hotkey { input: input::MOUSE_LEFT, mods: 0 };
+        d.settings.panic_hotkey = Hotkey { input: input::MOUSE_RIGHT, mods: 0 };
+        d.sanitize();
+        assert_eq!(d.settings.master_hotkey, Settings::default().master_hotkey);
+        assert_eq!(d.settings.panic_hotkey, Settings::default().panic_hotkey);
+        d.settings.master_hotkey = Hotkey { input: input::MOUSE_X1, mods: 0 };
+        d.sanitize();
+        assert_eq!(d.settings.master_hotkey.input, input::MOUSE_X1, "side buttons are fine");
     }
 
     #[test]

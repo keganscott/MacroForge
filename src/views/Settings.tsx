@@ -3,7 +3,8 @@ import { FolderOpen, MonitorSmartphone, Play, ShieldCheck, Volume1, Volume2 } fr
 import { KeyField } from "../components/KeyField";
 import { Button, Card, cx, Field, PageHeader, Segmented, SectionTitle, Slider, SwitchRow } from "../components/ui";
 import type { Accent, HudPosition, SoundStyle } from "../lib/types";
-import { backend, flushNow, setSettings, useStore } from "../store";
+import { MOUSE_LEFT, MOUSE_RIGHT } from "../lib/keys";
+import { backend, flushNow, setSettings, toast, useStore } from "../store";
 
 const ACCENTS: { id: Accent; color: string }[] = [
   { id: "signal", color: "#22d3ee" },
@@ -23,6 +24,15 @@ async function testSound(on: boolean) {
 
 const windowsReducesMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** Left / right click would take over every normal click, so they are refused here. */
+function setHotkey(which: "masterHotkey" | "panicHotkey", hk: { input: number; mods: number }) {
+  if (hk.input === MOUSE_LEFT || hk.input === MOUSE_RIGHT) {
+    toast("Left and right click can’t be a hotkey: every click would toggle it. Try a key or Mouse 4 / 5.");
+    return;
+  }
+  setSettings({ [which]: hk });
+}
+
 export function SettingsView() {
   const s = useStore((st) => st.data!.settings);
   const dir = useStore((st) => st.dataDir);
@@ -38,10 +48,10 @@ export function SettingsView() {
             <SectionTitle>Hotkeys</SectionTitle>
             <Card className="flex flex-col gap-5">
               <Field label="Switch all bindings on / off" hint="Works in any app, even while bindings are off. Scroll Lock by default: its keyboard light shows the state on many keyboards.">
-                <KeyField label="Master hotkey" value={s.masterHotkey} onChange={(masterHotkey) => setSettings({ masterHotkey })} quick={[]} />
+                <KeyField label="Master hotkey" value={s.masterHotkey} onChange={(masterHotkey) => setHotkey("masterHotkey", masterHotkey)} quick={[]} />
               </Field>
               <Field label="Stop everything" hint="Stops every running macro, rapid fire and held key at once, and lets go of anything MacroForge is holding down.">
-                <KeyField label="Stop-all hotkey" value={s.panicHotkey} onChange={(panicHotkey) => setSettings({ panicHotkey })} quick={[]} />
+                <KeyField label="Stop-all hotkey" value={s.panicHotkey} onChange={(panicHotkey) => setHotkey("panicHotkey", panicHotkey)} quick={[]} />
               </Field>
             </Card>
           </section>
