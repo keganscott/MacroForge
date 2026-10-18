@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -22,22 +22,32 @@ import {
 import { KeyField } from "../components/KeyField";
 import { MacroTimeline } from "../components/Timeline";
 import { useNavigate } from "../components/Shell";
-import { Button, Card, cx, Dialog, Empty, Eyebrow, IconButton, Keycap, LiveDot, NumberField, PageHeader, Segmented, Switch, TextInput } from "../components/ui";
+import { Button, cx, Dialog, Empty, IconButton, Keycap, LiveDot, NumberField, PageHeader, Segmented, Switch, TextInput } from "../components/ui";
 import { fmtMs, macroDuration, macroUsers, newId, stepSummary } from "../lib/describe";
 import { MOUSE_LEFT } from "../lib/keys";
-import type { Macro, Step, StepType } from "../lib/types";
+import type { Binding, Macro, Step, StepType } from "../lib/types";
+import { BindingEditor } from "./BindingEditor";
 import { backend, setSettings, toast, update, useStore } from "../store";
 
-const STEP_KINDS: { type: StepType; label: string; Icon: typeof Keyboard; make: () => Step }[] = [
-  { type: "press", label: "Key / click", Icon: Keyboard, make: () => ({ type: "press", input: 0, holdMs: 20 }) },
-  { type: "delay", label: "Wait", Icon: Clock, make: () => ({ type: "delay", ms: 50, jitterMs: 0 }) },
-  { type: "down", label: "Hold down", Icon: ArrowDown, make: () => ({ type: "down", input: 0 }) },
-  { type: "up", label: "Release", Icon: ArrowUp, make: () => ({ type: "up", input: 0 }) },
-  { type: "text", label: "Type text", Icon: Type, make: () => ({ type: "text", text: "", charDelayMs: 10 }) },
-  { type: "wheel", label: "Scroll", Icon: MousePointerClick, make: () => ({ type: "wheel", delta: 1, horizontal: false }) },
-  { type: "move", label: "Move mouse", Icon: Move, make: () => ({ type: "move", dx: 0, dy: 0, durationMs: 0 }) },
-  { type: "moveTo", label: "Cursor to", Icon: MousePointer2, make: () => ({ type: "moveTo", x: 0, y: 0 }) },
+type StepGroup = "Keys & clicks" | "Timing" | "Mouse" | "Text";
+
+const STEP_KINDS: { type: StepType; label: string; group: StepGroup; Icon: typeof Keyboard; make: () => Step }[] = [
+  { type: "press", label: "Press", group: "Keys & clicks", Icon: Keyboard, make: () => ({ type: "press", input: 0, holdMs: 20 }) },
+  { type: "down", label: "Hold down", group: "Keys & clicks", Icon: ArrowDown, make: () => ({ type: "down", input: 0 }) },
+  { type: "up", label: "Release", group: "Keys & clicks", Icon: ArrowUp, make: () => ({ type: "up", input: 0 }) },
+  { type: "delay", label: "Wait", group: "Timing", Icon: Clock, make: () => ({ type: "delay", ms: 50, jitterMs: 0 }) },
+  { type: "move", label: "Move", group: "Mouse", Icon: Move, make: () => ({ type: "move", dx: 0, dy: 0, durationMs: 0 }) },
+  { type: "moveTo", label: "Cursor to", group: "Mouse", Icon: MousePointer2, make: () => ({ type: "moveTo", x: 0, y: 0 }) },
+  { type: "wheel", label: "Scroll", group: "Mouse", Icon: MousePointerClick, make: () => ({ type: "wheel", delta: 1, horizontal: false }) },
+  { type: "text", label: "Type text", group: "Text", Icon: Type, make: () => ({ type: "text", text: "", charDelayMs: 10 }) },
 ];
+const STEP_GROUPS: StepGroup[] = ["Keys & clicks", "Timing", "Mouse", "Text"];
+const GROUP_TINT: Record<StepGroup, string> = {
+  "Keys & clicks": "bg-violet/20 text-violet-soft",
+  Timing: "bg-surface-3 text-ink-muted",
+  Mouse: "bg-lime/15 text-lime",
+  Text: "bg-white/10 text-ink",
+};
 const KIND = Object.fromEntries(STEP_KINDS.map((k) => [k.type, k])) as Record<StepType, (typeof STEP_KINDS)[number]>;
 
 export function MacrosView({ focus }: { focus?: string }) {
@@ -59,11 +69,12 @@ export function MacrosView({ focus }: { focus?: string }) {
   };
 
   const needle = q.trim().toLowerCase();
+  const data = useStore((s) => s.data)!;
   return (
     <>
       <PageHeader
         title="Macros"
-        description="Sequences of keys, clicks, waits and text. Record one or build it step by step, then give it a key in Bindings."
+        description="Sequences of keys, clicks, waits and text. Record one or build it step by step, then put it on a key."
         actions={
           <Button variant="primary" icon={<Plus aria-hidden className="size-4" />} onClick={create}>
             New macro
@@ -105,8 +116,14 @@ export function MacrosView({ focus }: { focus?: string }) {
                   )}
                 >
                   <span className="block truncate text-sm font-bold">{m.name}</span>
-                  <span className="text-xs text-ink-muted">
+                  <span className="mt-0.5 block text-xs text-ink-muted">
                     {m.steps.length} steps · {fmtMs(macroDuration(m.steps))}
+                  </span>
+                  <span className="mt-2 flex flex-wrap gap-1">
+                    {macroUsers(data, m.id).slice(0, 3).map((u) => (
+                      <Keycap key={u.binding.id} input={u.binding.trigger.input} mods={u.binding.trigger.mods} />
+                    ))}
+                    {macroUsers(data, m.id).length === 0 && <span className="text-[11px] font-semibold text-ink-faint">Not on a key</span>}
                   </span>
                 </button>
               ))}
@@ -131,6 +148,18 @@ function MacroEditor({ macro }: { macro: Macro }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
   const users = macroUsers(data, macro.id);
+  const [bindOpen, setBindOpen] = useState(false);
+  // A fresh draft each time the dialog opens: the macro already chosen.
+  const newBinding = useMemo<Binding>(
+    () => ({
+      id: newId("b"),
+      name: macro.name,
+      enabled: true,
+      trigger: { input: 0, mods: 0, mode: "press", passthrough: false },
+      action: { type: "macro", macroId: macro.id, repeat: 1, onRepress: "ignore", stopImmediately: true },
+    }),
+    [bindOpen, macro.id, macro.name],
+  );
 
   const set = (fn: (m: Macro) => Macro) => update((d) => ({ ...d, macros: d.macros.map((m) => (m.id === macro.id ? fn(m) : m)) }));
   const setSteps = (fn: (s: Step[]) => Step[]) => set((m) => ({ ...m, steps: fn(m.steps) }));
@@ -205,41 +234,53 @@ function MacroEditor({ macro }: { macro: Macro }) {
 
   return (
     <div className="min-w-0">
-      <Card className="mb-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <input
-            aria-label="Macro name"
-            value={macro.name}
-            onChange={(e) => set((m) => ({ ...m, name: e.target.value.slice(0, 60) }))}
-            className="min-w-0 flex-1 rounded-lg bg-transparent px-1 text-xl font-extrabold tracking-tight outline-none focus:bg-surface-2"
-          />
-          <IconButton label="Duplicate macro" onClick={duplicate}>
-            <Copy aria-hidden className="size-4" />
-          </IconButton>
-          <IconButton label="Delete macro" onClick={del} className="hover:text-bad">
-            <Trash2 aria-hidden className="size-4" />
-          </IconButton>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-ink-muted">
-          <span>{macro.steps.length} steps</span>
-          <span>About {fmtMs(macroDuration(macro.steps))} per pass</span>
-          {users.length ? (
-            <span>
-              Used by{" "}
-              {users.map((u, i) => (
-                <button key={u.binding.id} type="button" className="font-bold text-ink hover:underline" onClick={() => navigate({ view: "bindings", focus: u.profile.id })}>
-                  {i > 0 && ", "}
-                  {u.binding.name || u.profile.name}
-                </button>
-              ))}
-            </span>
-          ) : (
-            <button type="button" className="font-bold text-violet-soft hover:underline" onClick={() => navigate({ view: "bindings" })}>
-              Not on a key yet: add a binding
-            </button>
-          )}
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+      <section className="mb-4 overflow-hidden rounded-2xl border border-line bg-surface-1">
+        <header className="relative flex flex-wrap items-start gap-4 border-b border-line px-6 py-5 texture-grid">
+          <span
+            className={cx(
+              "relative grid size-12 shrink-0 place-items-center rounded-xl transition-colors",
+              running ? "bg-lime text-black" : recording ? "bg-bad text-white" : "bg-violet text-on-accent",
+            )}
+          >
+            <ListVideo aria-hidden className="size-6" />
+          </span>
+          <div className="relative min-w-0 flex-1">
+            <input
+              aria-label="Macro name"
+              value={macro.name}
+              onChange={(e) => set((m) => ({ ...m, name: e.target.value.slice(0, 60) }))}
+              className="-ml-1 w-full rounded-lg bg-transparent px-1 text-2xl font-extrabold tracking-tight outline-none hover:bg-surface-2/60 focus:bg-surface-2"
+            />
+            <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+              <span className="rounded-md bg-surface-2 px-2 py-0.5 font-semibold">{macro.steps.length} steps</span>
+              <span className="rounded-md bg-surface-2 px-2 py-0.5 font-semibold">{fmtMs(macroDuration(macro.steps))} per pass</span>
+              {users.length ? (
+                users.map((u) => (
+                  <button
+                    key={u.binding.id}
+                    type="button"
+                    title={"In " + u.profile.name + ": open in Bindings"}
+                    onClick={() => navigate({ view: "bindings", focus: u.profile.id })}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-violet/40 bg-violet/10 px-1.5 py-0.5 font-bold text-violet-soft hover:border-violet"
+                  >
+                    on <Keycap input={u.binding.trigger.input} mods={u.binding.trigger.mods} />
+                  </button>
+                ))
+              ) : (
+                <span className="font-semibold text-ink-faint">Not on a key yet</span>
+              )}
+            </div>
+          </div>
+          <div className="relative flex items-center gap-1">
+            <IconButton label="Duplicate macro" onClick={duplicate}>
+              <Copy aria-hidden className="size-4" />
+            </IconButton>
+            <IconButton label="Delete macro" onClick={del} className="hover:text-bad">
+              <Trash2 aria-hidden className="size-4" />
+            </IconButton>
+          </div>
+        </header>
+        <div className="flex flex-wrap items-center gap-2 px-6 py-3.5">
           {recording ? (
             <Button variant="danger" icon={<Square aria-hidden className="size-4" />} onClick={() => void stopRecording()}>
               Stop recording · {recCount} events
@@ -264,7 +305,7 @@ function MacroEditor({ macro }: { macro: Macro }) {
           )}
           {recording && (
             <span className="flex items-center gap-2 text-xs text-ink-muted">
-              <LiveDot className="bg-bad" /> Recording in other apps; switch to your game or app now. Input in this window is not recorded.
+              <LiveDot className="bg-bad" /> Recording in other apps: switch to your game or app now. Input in this window is not recorded.
             </span>
           )}
           {running && (
@@ -272,26 +313,35 @@ function MacroEditor({ macro }: { macro: Macro }) {
               <LiveDot /> Playing
             </span>
           )}
+          <Button variant="primary" className="ml-auto" icon={<Keyboard aria-hidden className="size-4" />} onClick={() => setBindOpen(true)}>
+            {users.length ? "Put on another key" : "Put on a key"}
+          </Button>
         </div>
-      </Card>
+      </section>
 
       <MacroTimeline steps={macro.steps} selected={selected} onSelect={setSelected} playing={running} />
 
-      {/* ------------------------------------------------ add-step bar */}
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        <Eyebrow className="mr-2">Add</Eyebrow>
-        {STEP_KINDS.map((k) => (
-          <button
-            key={k.type}
-            type="button"
-            onClick={() => insert([k.make()])}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface-1 px-2.5 text-xs font-bold text-ink-muted hover:border-violet hover:text-ink"
-          >
-            <k.Icon aria-hidden className="size-3.5" />
-            {k.label}
-          </button>
-        ))}
-        {selected !== null && <span className="ml-2 text-xs text-ink-faint">after step {selected + 1}</span>}
+      {/* ------------------------------------------------ step palette */}
+      <div className="sticky top-0 z-10 mb-3 rounded-2xl border border-line bg-surface-0/90 px-3 py-2.5 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {STEP_GROUPS.map((g) => (
+            <div key={g} className="flex items-center gap-1.5">
+              <span className="mr-1 text-[10px] font-bold tracking-[0.12em] text-ink-faint uppercase">{g}</span>
+              {STEP_KINDS.filter((k) => k.group === g).map((k) => (
+                <button
+                  key={k.type}
+                  type="button"
+                  onClick={() => insert([k.make()])}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-line bg-surface-1 px-2.5 text-xs font-bold text-ink-muted transition-colors hover:border-violet hover:text-ink"
+                >
+                  <k.Icon aria-hidden className="size-3.5" />
+                  {k.label}
+                </button>
+              ))}
+            </div>
+          ))}
+          <span className="ml-auto text-[11px] text-ink-faint">{selected !== null ? "New steps go after step " + (selected + 1) : "New steps go at the end"}</span>
+        </div>
       </div>
 
       {macro.steps.length === 0 ? (
@@ -358,15 +408,16 @@ function MacroEditor({ macro }: { macro: Macro }) {
         </ol>
       )}
 
+      <BindingEditor open={bindOpen} initial={newBinding} profileId={data.profiles[0]!.id} onClose={() => setBindOpen(false)} />
       <RecordDialog open={recOpen} onClose={() => setRecOpen(false)} onStart={() => void startRecording()} />
     </div>
   );
 }
 
 function StepIcon({ type }: { type: StepType }) {
-  const { Icon } = KIND[type];
+  const { Icon, group } = KIND[type];
   return (
-    <span className={cx("grid size-8 shrink-0 place-items-center rounded-lg", type === "delay" ? "bg-surface-3 text-ink-muted" : "bg-violet/20 text-violet-soft")}>
+    <span className={cx("grid size-8 shrink-0 place-items-center rounded-lg", GROUP_TINT[group])}>
       <Icon aria-hidden className="size-4" />
     </span>
   );
