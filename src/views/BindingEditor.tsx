@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Ban, Keyboard, ListVideo, Lock, Plus, Repeat2, Shuffle, Trash2, TriangleAlert } from "lucide-react";
 
 import { ConditionsEditor } from "../components/Conditions";
+import { FireRateHelper } from "../components/FireRate";
 import { KeyField } from "../components/KeyField";
 import { useNavigate } from "../components/Shell";
 import { Button, Callout, cx, Dialog, Field, NumberField, Segmented, Select, Slider, Switch, TextInput } from "../components/ui";
@@ -329,6 +330,7 @@ function RapidOptions({ action, onChange }: { action: Extract<Action, { type: "r
           One press every {period >= 1000 ? `${(period / 1000).toFixed(2)} s` : `${period.toFixed(1)} ms`} ({fmtRate(action.rate)} per second).
         </span>
       </Field>
+      <FireRateHelper rate={action.rate} onRate={(rate) => onChange({ rate })} holdMs={action.holdMs} onAutoHold={() => onChange({ holdMs: 0 })} />
       <div className="grid grid-cols-2 gap-5">
         <Field
           label="Press length"
@@ -354,7 +356,7 @@ function RapidOptions({ action, onChange }: { action: Extract<Action, { type: "r
             )}
           </div>
         </Field>
-        <Field label="Timing variation" hint="Spread each gap by up to this much, so the rhythm is not perfectly even.">
+        <Field label="Timing variation" hint="Adds up to this much to each gap, at random, so the rhythm is not perfectly even. It never makes a gap shorter, so the rate never goes over what you set.">
           <NumberField label="Timing variation" min={0} max={50} value={action.jitterPct} onChange={(jitterPct) => onChange({ jitterPct })} suffix="%" />
         </Field>
       </div>

@@ -1,25 +1,51 @@
-// Perfect 180: one side button turns you around. Pick the game and your
-// in-game sensitivity (or find it by testing), check it in the game with a
-// countdown, then put it on a button. See src/lib/turn.ts for the maths.
+// Perfect 180 and the sensitivity calculator. Pick the game and your
+// sensitivity (or eDPI); games without a reliable published value are
+// measured once with the full-circle test and saved. Check it in the game
+// with a countdown, then put it on a button. The maths: src/lib/turn.ts.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MousePointer2, Play, RotateCw, Target } from "lucide-react";
+import { MousePointer2, Play, RotateCw, Save, Target } from "lucide-react";
 
 import { KeyField, type KeyValue } from "../components/KeyField";
-import { Button, Card, cx, Field, NumberField, Segmented, Select, Switch } from "../components/ui";
+import { Button, Card, cx, Field, NumberField, Segmented, StatusBadge, Switch } from "../components/ui";
 import { newId } from "../lib/describe";
 import { keyName, MOUSE_X1, MOUSE_X2 } from "../lib/keys";
-import { countsFor180, errorDegrees, fullCircleSteps, TURN_GAMES, TURN_SPEEDS, turnSteps, type TurnSpeed } from "../lib/turn";
+import {
+  cmPer360,
+  countsFor,
+  degPerCount,
+  errorDegrees,
+  fullCircleSteps,
+  sensFromEdpi,
+  TIER_TEXT,
+  TURN_GAMES,
+  TURN_SPEEDS,
+  turnSteps,
+  yawFromCalibration,
+  type TurnSpeed,
+} from "../lib/turn";
 import type { Action, Conditions, Macro, Trigger } from "../lib/types";
-import { backend } from "../store";
+import { backend, setSettings, toast, useStore } from "../store";
 
 type AddFn = (name: string, trigger: Partial<Trigger> & { input: number }, action: Action, macro?: Macro, conditions?: Conditions) => void;
 
+const round = (n: number, digits = 3) => Number(n.toFixed(digits));
+const shortName = (name: string) => name.replace(/ \(.*\)$/, "").replace(/ \/.*$/, "");
+const NO_CALIBRATIONS: { game: string; yaw: number }[] = [];
+
 export function TurnTool({ onAdd }: { onAdd: AddFn }) {
+  const saved = useStore((st) => st.data?.settings.turnCalibrations ?? NO_CALIBRATIONS);
   const [gameId, setGameId] = useState("cs2");
   const game = TURN_GAMES.find((g) => g.id === gameId)!;
   const [sens, setSens] = useState(game.sens);
-  const computed = countsFor180(game, sens);
+  const [byEdpi, setByEdpi] = useState(false);
+  const [edpi, setEdpi] = useState(1600);
+  const [dpi, setDpi] = useState(800);
+  // eDPI = DPI × sensitivity, so the sensitivity follows from both.
+  const effSens = byEdpi ? (sensFromEdpi(edpi, dpi) ?? 0) : sens;
+  const calibration = saved.find((c) => c.game === game.id);
+  const perCount = degPerCount(game, effSens, saved);
+  const computed = countsFor(180, perCount);
   const [counts, setCounts] = useState(computed ?? 5000);
   const [nudged, setNudged] = useState(false);
   const [right, setRight] = useState(true);
@@ -60,8 +86,23 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
     }, 1000);
   };
 
+  // Minecraft's turn is cubic in its slider, so a per-sensitivity value
+  // cannot be stored; its formula is used (and fine-tunes apply directly).
+  const canCalibrate = game.id !== "minecraft" && effSens > 0;
+  const saveCalibration = () => {
+    const yaw = yawFromCalibration(counts, effSens);
+    if (!yaw) return;
+    setSettings({ turnCalibrations: [...saved.filter((c) => c.game !== game.id), { game: game.id, yaw }] });
+    setNudged(false);
+    toast(`Saved your ${shortName(game.name)} calibration`);
+  };
+  const forgetCalibration = () => {
+    setSettings({ turnCalibrations: saved.filter((c) => c.game !== game.id) });
+    toast(`Forgot your ${shortName(game.name)} calibration`);
+  };
+
   const add = () => {
-    const label = game.yaw ? `${game.name.replace(/ \(.*\)$/, "")}, sens ${sens}` : `${counts} counts`;
+    const label = effSens > 0 ? `${shortName(game.name)}, sens ${round(effSens)}` : `${counts} counts`;
     const m: Macro = { id: newId("m"), name: `180° turn (${label})`, steps: turnSteps(counts, right, speed) };
     onAdd(
       "180° turn",
@@ -72,8 +113,12 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
     );
   };
 
-  const err = game.yaw ? errorDegrees(game, sens, counts) : 0;
+  const err = errorDegrees(perCount, counts);
+  // What one count is worth as set now (after any fine-tune).
+  const usedPerCount = counts > 0 ? 180 / counts : null;
+  const tier = calibration && game.id !== "minecraft" ? null : TIER_TEXT[game.tier];
   const speedInfo = TURN_SPEEDS.find((s) => s.id === speed)!;
+  const cm = cmPer360(usedPerCount, dpi);
 
   return (
     <Card className="xl:col-span-2">
@@ -87,27 +132,83 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
             <span className="rounded-md border border-violet/40 bg-violet/10 px-1.5 py-px text-[10px] font-bold tracking-wider text-violet-soft uppercase">New</span>
           </h2>
           <p className="text-xs text-ink-muted">
-            One button turns you around exactly 180°, calibrated to your game and sensitivity. The same idea as Razer’s Perfect 180, on any mouse.
+            One button turns you around exactly 180°, worked out from your game and sensitivity (or eDPI). The same idea as Razer’s Perfect 180, on any mouse.
           </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.15fr_1fr]">
-        {/* ---------------------------------------------- calibrate */}
+        {/* ---------------------------------------------- calculator */}
         <div className="flex flex-col gap-5">
-          <div className="grid grid-cols-[1fr_auto] gap-4">
-            <Field label="Game">
-              <Select label="Game" value={gameId} onChange={(id) => {
-                setGameId(id);
-                const g = TURN_GAMES.find((x) => x.id === id)!;
-                setSens(g.sens);
-              }} options={TURN_GAMES.map((g) => ({ value: g.id, label: g.name }))} />
-            </Field>
-            {game.yaw > 0 && (
-              <Field label="In-game sensitivity">
-                <NumberField label="In-game sensitivity" min={0.001} max={1000} step={0.05} value={sens} onChange={setSens} width="w-24" />
-              </Field>
-            )}
+          <Field label="Game" hint={tier ? tier.hint : "Measured by you in this game, so it is used instead of any published value."}>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Game"
+                value={gameId}
+                onChange={(e) => {
+                  const g = TURN_GAMES.find((x) => x.id === e.target.value)!;
+                  setGameId(g.id);
+                  setSens(g.sens);
+                }}
+                className="field min-w-64 flex-1 pr-8"
+              >
+                {(["verified", "community", "measure"] as const).map((t) => (
+                  <optgroup key={t} label={t === "measure" ? "Measure once (no published value)" : TIER_TEXT[t].label}>
+                    {TURN_GAMES.filter((g) => g.tier === t).map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                        {saved.some((c) => c.game === g.id) ? "  (calibrated)" : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              {tier ? (
+                <StatusBadge tone={game.tier === "verified" ? "ok" : game.tier === "community" ? "info" : "warn"}>{tier.label}</StatusBadge>
+              ) : (
+                <StatusBadge tone="ok">Your calibration</StatusBadge>
+              )}
+            </div>
+          </Field>
+
+          <div className="flex flex-col gap-3">
+            <Segmented
+              size="sm"
+              label="I know my"
+              value={byEdpi ? "edpi" : "sens"}
+              onChange={(v) => setByEdpi(v === "edpi")}
+              options={[
+                { value: "sens", label: "I know my sensitivity" },
+                { value: "edpi", label: "I know my eDPI" },
+              ]}
+            />
+            <div className="flex flex-wrap items-end gap-4">
+              {byEdpi ? (
+                <>
+                  <Field label="eDPI">
+                    <NumberField label="eDPI" min={1} max={1_000_000} step={10} value={edpi} onChange={setEdpi} width="w-28" />
+                  </Field>
+                  <Field label="Mouse DPI">
+                    <NumberField label="Mouse DPI" min={50} max={64_000} step={50} value={dpi} onChange={setDpi} width="w-24" />
+                  </Field>
+                  <p className="pb-2.5 text-xs text-ink-muted">
+                    = {game.sensLabel.toLowerCase()} <span className="font-mono font-bold text-ink">{effSens > 0 ? round(effSens) : "—"}</span>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <Field label={game.sensLabel}>
+                    <NumberField label={game.sensLabel} min={0.0001} max={10_000} step={game.sensStep} value={sens} onChange={setSens} width="w-28" />
+                  </Field>
+                  <Field label="Mouse DPI (for cm/360)">
+                    <NumberField label="Mouse DPI" min={50} max={64_000} step={50} value={dpi} onChange={setDpi} width="w-24" />
+                  </Field>
+                </>
+              )}
+            </div>
+            <p className="text-[11px] text-ink-faint">
+              Your mouse DPI never changes the turn (MacroForge sends exact counts); it is only used for eDPI and cm/360.
+            </p>
           </div>
 
           <div className="rounded-xl border border-line bg-surface-0/50 p-4">
@@ -119,12 +220,12 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
                   <span className="ml-2 text-sm font-semibold text-ink-muted">counts</span>
                 </p>
               </div>
-              <p className="max-w-56 text-right text-[11px] leading-relaxed text-ink-muted">
-                {game.yaw
-                  ? nudged
+              <p className="max-w-60 text-right text-[11px] leading-relaxed text-ink-muted">
+                {perCount === null
+                  ? "Not measured yet. Use Test full circle and nudge until you face exactly where you began, then save it."
+                  : nudged
                     ? `Fine-tuned from ${computed?.toLocaleString()}.`
-                    : `180 ÷ (${game.yaw} × ${sens}). Off by ${err < 0.005 ? "under 0.005" : err.toFixed(3)}° after rounding.`
-                  : "Use Full circle in your game and nudge until you end up exactly where you started."}
+                    : `180 ÷ ${round(perCount, 6)}° per count, within ${err < 0.005 ? "0.005" : err.toFixed(3)}° of exact.`}
               </p>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-1.5">
@@ -152,6 +253,36 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
                 className="ml-auto"
               />
             </div>
+
+            <dl className="mt-4 grid grid-cols-4 gap-2 border-t border-line pt-3">
+              {[
+                ["Per count", usedPerCount ? `${round(usedPerCount, 5)}°` : "—"],
+                ["180°", counts.toLocaleString()],
+                ["360°", (counts * 2).toLocaleString()],
+                ["cm / 360", cm ? `${cm.toFixed(1)} cm` : "—"],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-[10px] font-bold tracking-wider text-ink-faint uppercase">{k}</dt>
+                  <dd className="font-mono text-sm font-bold text-ink">{v}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {canCalibrate && (perCount === null || nudged || calibration) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                {(perCount === null || nudged) && (
+                  <Button size="sm" variant="primary" icon={<Save aria-hidden className="size-3.5" />} onClick={saveCalibration}>
+                    Save as my {shortName(game.name)} calibration
+                  </Button>
+                )}
+                {calibration && !nudged && (
+                  <Button size="sm" variant="ghost" onClick={forgetCalibration}>
+                    Forget my calibration
+                  </Button>
+                )}
+                <span className="text-[11px] text-ink-faint">Saved for this game; change your sensitivity later and it still works it out.</span>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -185,10 +316,14 @@ export function TurnTool({ onAdd }: { onAdd: AddFn }) {
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {countdown ? (
-                  <Button size="sm" variant="go" onClick={() => {
-                    if (timer.current) clearInterval(timer.current);
-                    setCountdown(null);
-                  }}>
+                  <Button
+                    size="sm"
+                    variant="go"
+                    onClick={() => {
+                      if (timer.current) clearInterval(timer.current);
+                      setCountdown(null);
+                    }}
+                  >
                     {countdown.what} in {countdown.n}… (cancel)
                   </Button>
                 ) : (

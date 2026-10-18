@@ -11,6 +11,7 @@ import { fmtRate, newId } from "../lib/describe";
 import { comboName, keyName, MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, WHEEL_DOWN, WHEEL_UP } from "../lib/keys";
 import { NO_CONDITIONS, type Action, type Binding, type Conditions, type Macro, type Trigger, type TriggerMode } from "../lib/types";
 import { ConditionsQuick } from "../components/Conditions";
+import { FireRateHelper } from "../components/FireRate";
 import { TurnTool } from "./TurnTool";
 import { toast, update, useStore } from "../store";
 import { PageHeader } from "../components/ui";
@@ -142,6 +143,7 @@ function AutoClicker({ onAdd }: { onAdd: AddFn }) {
       <Field label="Clicks per second">
         <Rate value={rate} onChange={setRate} />
       </Field>
+      <FireRateHelper rate={rate} onRate={setRate} />
       <Field label="Start with">
         <KeyField label="Auto-clicker key" value={key} onChange={setKey} quick={[]} />
       </Field>
@@ -172,6 +174,7 @@ function Turbo({ onAdd }: { onAdd: AddFn }) {
       <Field label="Repeats per second">
         <Rate value={rate} onChange={setRate} />
       </Field>
+      <FireRateHelper rate={rate} onRate={setRate} />
       <ConditionsQuick value={cond} onChange={(c) => setCond({ ...c, whileHeld: c.whileHeld === key.input ? 0 : c.whileHeld })} trigger={key.input} toggle={false} />
     </Tool>
   );

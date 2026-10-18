@@ -263,6 +263,17 @@ pub struct Settings {
     pub record_fixed_delay_ms: f64,
     pub record_mouse_moves: bool,
     pub seen_welcome: bool,
+    /// Perfect 180: degrees per mouse count you measured in a game (for
+    /// games with no reliable published value), by game id.
+    pub turn_calibrations: Vec<TurnCalibration>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TurnCalibration {
+    pub game: String,
+    /// Degrees of turn per count at sensitivity 1.
+    pub yaw: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -315,6 +326,7 @@ impl Default for Settings {
             record_fixed_delay_ms: 30.0,
             record_mouse_moves: false,
             seen_welcome: false,
+            turn_calibrations: Vec::new(),
         }
     }
 }
@@ -520,6 +532,13 @@ impl Data {
         s.panic_hotkey.sanitize();
         s.record_fixed_delay_ms = clamp_f(s.record_fixed_delay_ms, 0.0, 10_000.0, 30.0);
         s.sound_volume = s.sound_volume.min(100);
+        let mut seen_games = std::collections::HashSet::new();
+        s.turn_calibrations.retain_mut(|c| {
+            let Some(id) = clean_id(&c.game) else { return false };
+            c.game = id;
+            c.yaw.is_finite() && c.yaw > 1e-7 && c.yaw < 100.0 && seen_games.insert(c.game.clone())
+        });
+        s.turn_calibrations.truncate(200);
         if !["signal", "violet", "blue", "teal", "green", "amber", "pink"].contains(&s.accent.as_str()) {
             s.accent = "signal".into();
         }

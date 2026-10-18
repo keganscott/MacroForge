@@ -263,7 +263,10 @@ pub fn run_rapid(
         if cx.cancel.is_finishing() {
             break;
         }
-        let next = period + cx.rng.spread(jitter);
+        // Variation only ever adds to the gap, never takes away: a gap shorter
+        // than the set rate could land before a gun is ready to fire again,
+        // and that click would be lost (src/lib/firerate.ts).
+        let next = period + cx.rng.unit() * jitter;
         let gap = (start + next.max(1.0)) - cx.t;
         if cx.wait(gap) {
             break;
@@ -499,6 +502,25 @@ pub mod tests {
         let c = Cancel::new();
         run_macro(&[Step::Press { input: 0x41, hold_ms: 0.0 }], Loop::Times(3), &rec, &mut ctx(&mut w, &c), &|| false);
         assert!(rec.events().is_empty(), "a counted run ends when its conditions fail");
+    }
+
+    #[test]
+    fn variation_never_shortens_a_gap() {
+        let rec = std::sync::Arc::new(Rec::default());
+        let c = std::sync::Arc::new(Cancel::new());
+        let (r2, c2) = (rec.clone(), c.clone());
+        let h = std::thread::spawn(move || {
+            let mut w = SpinWaiter { spin_ms: 2.0 };
+            run_rapid(256, 100.0, 0.0, 40.0, &*r2, &mut Ctx { waiter: &mut w, cancel: &c2, rng: Rng::new(9), t: now_ms() }, &mut |_| {}, &|| true);
+        });
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        c.stop();
+        h.join().unwrap();
+        let downs: Vec<f64> = rec.evs.lock().iter().filter(|(_, e)| *e == Ev::In(256, true)).map(|(t, _)| *t).collect();
+        let gaps: Vec<f64> = downs.windows(2).map(|w| w[1] - w[0]).collect();
+        assert!(gaps.len() >= 10);
+        assert!(gaps.iter().all(|g| *g >= 9.8), "a gap under 10 ms: {gaps:?}");
+        assert!(gaps.iter().any(|g| *g > 11.0), "variation is applied");
     }
 
     #[test]

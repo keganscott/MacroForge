@@ -98,6 +98,13 @@ export interface Settings {
   recordFixedDelayMs: number;
   recordMouseMoves: boolean;
   seenWelcome: boolean;
+  /** Perfect 180 calibrations you measured: degrees per count at sensitivity 1. */
+  turnCalibrations?: TurnCalibration[];
+}
+
+export interface TurnCalibration {
+  game: string;
+  yaw: number;
 }
 
 export interface Data {

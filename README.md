@@ -21,6 +21,12 @@ React/TypeScript/Tailwind UI.
   - **Calibration:** counts = 180 ÷ (game yaw × in-game sensitivity), using
     community yaw values: CS2/Apex 0.022, Valorant 0.07, Overwatch 2 and Call
     of Duty 0.0066. For any other game, use the tests and fine-tuning.
+  - **Sensitivity calculator:** enter your sensitivity, or your eDPI plus
+    DPI, to get counts per 180° and 360°, degrees per count, and cm/360.
+    Games are grouped by how trustworthy their value is: verified, community,
+    or measure-once. Measure-once games (ARC Raiders, Fortnite, The Finals,
+    Marvel Rivals, Rust, PUBG, any other) are calibrated with the full-circle
+    test and saved per game. Minecraft uses its cubic slider formula.
   - **Testing:** Test 180° and Test full circle run after a 3-second
     countdown, so you can check in game.
   - **Options:** Snap, Quick (60 ms) or Smooth (150 ms); left or right; and
@@ -45,6 +51,14 @@ React/TypeScript/Tailwind UI.
     Right Shift + R + Delete).
   - **Any game:** Windows key, Caps Lock, and a clicker-game auto-clicker
     (off by default).
+- **Match a gun's fire rate** (rapid fire, Auto-clicker, Turbo): enter the
+  gun's RPM and your FPS to get the fastest rate that never clicks before the
+  gun is ready. That is cooldown + one frame, because a game only sees a
+  click on its next frame. The helper shows the shots per second and clicks
+  lost at your current rate, and warns when the press is shorter than a
+  frame. At 600 RPM and 144 FPS, clicking at 10/s loses about 40% of clicks
+  (6.0 shots/s); 9.29/s loses none (9.3 shots/s). Model and checks are in
+  `src/lib/firerate.ts`. Timing variation now only ever lengthens a gap.
 - **Bindings.** Any key, mouse button (including Mouse 4/5), or wheel
   direction, with optional Ctrl / Shift / Alt / Win, can:
   - play a macro, in Press, Hold or Toggle mode, with repeat counts and a
