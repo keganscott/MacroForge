@@ -448,8 +448,8 @@ function StepFields({ step, onChange }: { step: Step; onChange: (s: Step) => voi
       return (
         <div className="flex flex-wrap items-center gap-3">
           <span className="w-20 text-xs font-bold text-ink-muted">Move by</span>
-          <NumberField label="Horizontal" min={-32000} max={32000} value={step.dx} onChange={(dx) => onChange({ ...step, dx: Math.round(dx) })} suffix="x" width="w-20" />
-          <NumberField label="Vertical" min={-32000} max={32000} value={step.dy} onChange={(dy) => onChange({ ...step, dy: Math.round(dy) })} suffix="y" width="w-20" />
+          <NumberField label="Horizontal" min={-200000} max={200000} value={step.dx} onChange={(dx) => onChange({ ...step, dx: Math.round(dx) })} suffix="x" width="w-24" />
+          <NumberField label="Vertical" min={-200000} max={200000} value={step.dy} onChange={(dy) => onChange({ ...step, dy: Math.round(dy) })} suffix="y" width="w-24" />
           <span className="text-xs text-ink-faint">over</span>
           <NumberField label="Duration" min={0} max={60000} value={step.durationMs} onChange={(durationMs) => onChange({ ...step, durationMs })} suffix="ms" width="w-20" />
         </div>

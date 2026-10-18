@@ -16,6 +16,17 @@ React/TypeScript/Tailwind UI.
   scroll spam, text snippets, and disable-a-key (for example both Windows
   keys). Each takes two clicks and becomes a normal binding you can
   fine-tune.
+- **Perfect 180** (Quick tools): one button, Mouse 4 by default, turns you
+  around exactly 180°, like Razer's Perfect 180 on any mouse.
+  - **Calibration:** counts = 180 ÷ (game yaw × in-game sensitivity), using
+    community yaw values: CS2/Apex 0.022, Valorant 0.07, Overwatch 2 and Call
+    of Duty 0.0066. For any other game, use the tests and fine-tuning.
+  - **Testing:** Test 180° and Test full circle run after a 3-second
+    countdown, so you can check in game.
+  - **Options:** Snap, Quick (60 ms) or Smooth (150 ms); left or right; and
+    Pause in menus, on by default.
+  - **Verified:** raw input, which is what games read, receives the moves
+    exactly (`examples/raw_move_check.rs`). Mouse DPI doesn't matter.
 - **Game presets.** Each game card says plainly what its rules allow (with the
   source), lists the game's own settings to use first, then offers bindings
   marked "Sends nothing to the game" or "Sends input". Install never

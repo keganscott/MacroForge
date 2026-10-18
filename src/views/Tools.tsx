@@ -11,6 +11,7 @@ import { fmtRate, newId } from "../lib/describe";
 import { comboName, keyName, MOUSE_LEFT, MOUSE_MIDDLE, MOUSE_RIGHT, WHEEL_DOWN, WHEEL_UP } from "../lib/keys";
 import { NO_CONDITIONS, type Action, type Binding, type Conditions, type Macro, type Trigger, type TriggerMode } from "../lib/types";
 import { ConditionsQuick } from "../components/Conditions";
+import { TurnTool } from "./TurnTool";
 import { toast, update, useStore } from "../store";
 import { PageHeader } from "../components/ui";
 
@@ -51,6 +52,7 @@ export function ToolsView() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <AutoClicker onAdd={add} />
         <Turbo onAdd={add} />
+        <TurnTool onAdd={add} />
         <Remap onAdd={add} />
         <AutoRun onAdd={add} />
         <ScrollSpam onAdd={add} />

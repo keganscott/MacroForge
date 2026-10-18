@@ -328,7 +328,9 @@ pub const MAX_DELAY_MS: f64 = 3_600_000.0;
 pub const MAX_STEPS: usize = 20_000;
 pub const MAX_TEXT: usize = 4_000;
 pub const MAX_REPEAT: u32 = 100_000;
-pub const MAX_MOVE: i32 = 32_000;
+/// Mouse movement per step, in counts. Large enough for a 180° turn at very
+/// low sensitivities (Overwatch at 0.5 needs ~54,500).
+pub const MAX_MOVE: i32 = 200_000;
 
 fn clamp_f(v: f64, lo: f64, hi: f64, fallback: f64) -> f64 {
     if v.is_finite() {
