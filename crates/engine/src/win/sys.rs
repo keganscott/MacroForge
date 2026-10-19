@@ -204,6 +204,34 @@ pub fn cursor_visible() -> bool {
     }
 }
 
+/// Is the cursor over a window of the app in front? A click elsewhere (on
+/// a second monitor) belongs to that other window. Windows that can't be
+/// told apart, and MacroForge's own notice, count as "yes".
+pub fn cursor_over_foreground() -> bool {
+    use windows_sys::Win32::Foundation::POINT;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GetCursorPos, WindowFromPoint, GA_ROOT};
+    // SAFETY: plain queries; null handles are checked.
+    unsafe {
+        let mut pt = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut pt) == 0 {
+            return true;
+        }
+        let under = WindowFromPoint(pt);
+        let fg = GetForegroundWindow();
+        if under.is_null() || fg.is_null() {
+            return true;
+        }
+        let (under, fg) = (GetAncestor(under, GA_ROOT), GetAncestor(fg, GA_ROOT));
+        if under == fg {
+            return true;
+        }
+        let (mut a, mut b) = (0u32, 0u32);
+        GetWindowThreadProcessId(under, &mut a);
+        GetWindowThreadProcessId(fg, &mut b);
+        a == 0 || a == b || a == GetCurrentProcessId()
+    }
+}
+
 /// Is this virtual key physically held right now (as Windows sees it)?
 pub fn key_down(vk: u16) -> bool {
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;

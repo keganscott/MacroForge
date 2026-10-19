@@ -77,6 +77,9 @@ pub struct Shared {
     /// "Is this key physically down?" from the platform, to catch a modifier
     /// whose release the hook never saw (Win+L, an admin prompt).
     key_probe: std::sync::OnceLock<fn(Input) -> bool>,
+    /// "Is the cursor over the window in front?" from the platform. A click
+    /// on another window (a second monitor) is never a game's binding.
+    target_probe: std::sync::OnceLock<fn() -> bool>,
 }
 
 impl Shared {
@@ -99,11 +102,21 @@ impl Shared {
             held: (0..INPUT_COUNT).map(|_| AtomicBool::new(false)).collect(),
             cursor_probe: std::sync::OnceLock::new(),
             key_probe: std::sync::OnceLock::new(),
+            target_probe: std::sync::OnceLock::new(),
         }
     }
 
     pub fn set_key_probe(&self, probe: fn(Input) -> bool) {
         let _ = self.key_probe.set(probe);
+    }
+
+    pub fn set_target_probe(&self, probe: fn() -> bool) {
+        let _ = self.target_probe.set(probe);
+    }
+
+    /// Is the cursor over the window in front? (Yes when there is no probe.)
+    pub fn over_foreground(&self) -> bool {
+        self.target_probe.get().is_none_or(|f| f())
     }
 
     /// Install the platform's cursor check (once, at hook start).
@@ -377,6 +390,13 @@ impl Gate {
         }) else {
             return false;
         };
+        // A click on some other window, e.g. on a second monitor while the
+        // game is still in front, goes to that window as a normal click.
+        // Taking it would keep the game in front, so every click after it
+        // would be taken too.
+        if input::is_mouse_button(code) && !sh.over_foreground() {
+            return false;
+        }
         let swallow = !b.trigger.passthrough;
         if momentary {
             let _ = sh.tx.send(HookMsg::Trigger { bound: b.clone(), down: true, repeat: false, t });
@@ -629,6 +649,27 @@ mod tests {
         assert!(!g.on_input(&sh, 256, false, Origin::Physical));
         assert!(triggers(&rx).is_empty());
         assert_eq!(g.conditional, 0);
+    }
+
+    static OVER_GAME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+    fn fake_target() -> bool {
+        OVER_GAME.load(Ordering::Relaxed)
+    }
+
+    #[test]
+    fn a_click_on_another_window_is_left_alone() {
+        let (sh, rx, mut g) = setup(vec![rapid("r", 256, TriggerMode::Hold, Conditions::default())]);
+        sh.set_target_probe(fake_target);
+        // Cursor on the second monitor, over another app: a normal click.
+        OVER_GAME.store(false, Ordering::Relaxed);
+        assert!(!g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(!g.on_input(&sh, 256, false, Origin::Physical));
+        assert!(triggers(&rx).is_empty());
+        // Back over the game: the binding works again.
+        OVER_GAME.store(true, Ordering::Relaxed);
+        assert!(g.on_input(&sh, 256, true, Origin::Physical));
+        assert!(g.on_input(&sh, 256, false, Origin::Physical));
+        assert_eq!(triggers(&rx), vec![("r".into(), true, false), ("r".into(), false, false)]);
     }
 
     #[test]

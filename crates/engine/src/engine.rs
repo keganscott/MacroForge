@@ -851,6 +851,10 @@ impl Core {
                 match job {
                     Job::Macro { steps, lp, .. } => runner::run_macro(&steps, lp, &*out, &mut cx, &ok),
                     Job::Rapid { output, rate, hold_ms, jitter_pct, .. } => {
+                        // Clicks pause while the cursor is over another window
+                        // (a second monitor), so they never land there.
+                        let mouse = input::is_mouse_button(output);
+                        let ok = || ok() && (!mouse || shared.over_foreground());
                         runner::run_rapid(output, rate, hold_ms, jitter_pct, &*out, &mut cx, &mut |late| {
                             let mut r = rhythm.lock();
                             r.presses += 1;
