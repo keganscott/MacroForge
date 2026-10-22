@@ -25,3 +25,5 @@ Keyboard and mouse macro app for Windows (Tauri 2 shell, Rust engine, React/TS/T
 - `npx tauri dev`, `npx tauri build --no-bundle`
 - Builds work offline from the seeded `Cargo.lock` / `package-lock.json` (taken from PeakTweaks).
 - Build output: `%LOCALAPPDATA%\MacroForge-build\target` (`.cargo/config.toml`, kept out of OneDrive).
+- Install / update: `powershell -ExecutionPolicy Bypass -File scripts\update.ps1`. It builds, then overwrites the one install at `%LOCALAPPDATA%\Programs\MacroForge\MacroForge.exe` and relaunches it in the tray. The desktop shortcut and Start with Windows point there.
+- One copy only (Kegan's call, 2026-10-22): every update replaces that same exe. Never leave extra or versioned copies (no exe in the project folder, no installers, no `MacroForge-v2.exe`).
