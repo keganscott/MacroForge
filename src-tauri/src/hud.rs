@@ -39,6 +39,8 @@ pub struct Notice {
     pub text: String,
     pub on: bool,
     pub pos: HudPosition,
+    /// Just a small circle: a check for on, an X for off.
+    pub stealth: bool,
     pub accent: (u8, u8, u8),
 }
 
@@ -119,7 +121,7 @@ fn start() -> Option<Hud> {
                             latest = Some(n);
                         }
                         if let Some(n) = latest {
-                            let mut f = render(&n);
+                            let mut f = if n.stealth { render_stealth(n.on) } else { render(&n) };
                             place(&mut f, &n.pos);
                             frame = Some(f);
                             dir = 1;
@@ -398,6 +400,48 @@ fn render(n: &Notice) -> Frame {
     let cx = glow + pill_w - pad - chip_w + (chip_w - chip_t.w) / 2;
     let cy = glow + (pill_h - chip_h) / 2 + (chip_h - chip_t.h) / 2;
     stamp(&mut frame, &chip_t, cx, cy, if n.on { (0, 0, 0) } else { (166, 166, 176) });
+    frame
+}
+
+/// Distance from (px, py) to the segment a-b.
+fn sd_segment(px: f32, py: f32, a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (bx, by) = (b.0 - a.0, b.1 - a.1);
+    let (qx, qy) = (px - a.0, py - a.1);
+    let t = ((qx * bx + qy * by) / (bx * bx + by * by)).clamp(0.0, 1.0);
+    ((qx - bx * t).powi(2) + (qy - by * t).powi(2)).sqrt()
+}
+
+/// Stealth: a small dark circle with a green check (on) or a red X (off).
+fn render_stealth(on: bool) -> Frame {
+    let s = dpi_scale();
+    let d = (26.0 * s).round() as i32;
+    let m = (6.0 * s).round() as i32; // margin for the soft glow
+    let (w, h) = (d + m * 2, d + m * 2);
+    let mut frame = Frame { w, h, px: vec![0u8; (w * h * 4) as usize], x: 0, y: 0 };
+    let colour = if on { (198u8, 255u8, 52u8) } else { (255u8, 92u8, 122u8) };
+    let (c, r) = (w as f32 / 2.0, d as f32 / 2.0);
+    let stroke = 1.6 * s.max(1.0);
+    // Mark on a 26-unit grid, centred.
+    let u = d as f32 / 26.0;
+    let at = |x: f32, y: f32| (c + (x - 13.0) * u, c + (y - 13.0) * u);
+    let check = [(at(8.0, 13.4), at(11.6, 17.0)), (at(11.6, 17.0), at(18.2, 9.6))];
+    let cross = [(at(9.2, 9.2), at(16.8, 16.8)), (at(16.8, 9.2), at(9.2, 16.8))];
+    let lines = if on { check } else { cross };
+    for y in 0..h {
+        for x in 0..w {
+            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+            let i = ((y * w + x) * 4) as usize;
+            let p = &mut frame.px[i..i + 4];
+            let dist = ((fx - c).powi(2) + (fy - c).powi(2)).sqrt() - r;
+            if dist > 0.0 {
+                over(p, colour, (-(dist / (3.0 * s)).powi(2)).exp() * 0.28);
+            }
+            over(p, (8, 8, 10), sd_cov(dist) * 0.92);
+            over(p, colour, sd_cov(dist.abs() - stroke / 2.0));
+            let mark = lines.iter().map(|&(a, b)| sd_segment(fx, fy, a, b)).fold(f32::MAX, f32::min);
+            over(p, colour, sd_cov(mark - stroke * 0.75));
+        }
+    }
     frame
 }
 

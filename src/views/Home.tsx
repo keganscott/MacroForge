@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRight, Gamepad2, Gauge, Keyboard, ListVideo, Lock, MousePointerClick, ShieldAlert, Square, Wand2 } from "lucide-react";
+import { ArrowRight, CircleCheck, Gamepad2, Gauge, Keyboard, ListVideo, Lock, MousePointerClick, ShieldAlert, Square, Volume2, VolumeX, Wand2 } from "lucide-react";
 
 import { SignalTrace } from "../components/brand";
 import { MasterSwitch, useNavigate } from "../components/Shell";
@@ -8,7 +8,7 @@ import { actionSummary, bindingTitle, fmtUs } from "../lib/describe";
 import { comboName } from "../lib/keys";
 import { useActive, useActiveInterval } from "../lib/active";
 import type { Binding, Stats } from "../lib/types";
-import { backend, useStore } from "../store";
+import { backend, flushNow, setSettings, useStore } from "../store";
 
 export function HomeView() {
   const data = useStore((s) => s.data)!;
@@ -116,6 +116,25 @@ export function HomeView() {
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <MasterSwitch large />
+              <QuickToggle
+                on={!s.sounds}
+                onClick={() => setSettings({ sounds: !s.sounds })}
+                icon={s.sounds ? <Volume2 aria-hidden className="size-4" /> : <VolumeX aria-hidden className="size-4" />}
+                title={s.sounds ? "Mute sounds" : "Sounds muted"}
+                hint="No click when anything turns on or off"
+              />
+              <QuickToggle
+                on={s.hudStealth}
+                onClick={() => {
+                  const hudStealth = !s.hudStealth;
+                  setSettings({ hudStealth, ...(hudStealth ? { hud: true } : {}) });
+                  // Show what it looks like now.
+                  void flushNow().then(() => backend().previewHud());
+                }}
+                icon={<CircleCheck aria-hidden className="size-4" />}
+                title={s.hudStealth ? "Stealth notice on" : "Stealth notice"}
+                hint="Just a small ✓ or ✕ on screen instead of the full notice"
+              />
               {total === 0 && (
                 <Button variant="primary" icon={<Wand2 aria-hidden className="size-4" />} onClick={() => navigate({ view: "tools" })}>
                   Set up a quick tool
@@ -214,6 +233,25 @@ export function HomeView() {
         </div>
       </div>
     </>
+  );
+}
+
+/** A small on / off pill for a setting, next to the master switch. */
+function QuickToggle({ on, onClick, icon, title, hint }: { on: boolean; onClick: () => void; icon: React.ReactNode; title: string; hint: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={on}
+      title={hint}
+      onClick={onClick}
+      className={cx(
+        "inline-flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-bold transition-colors",
+        on ? "border-violet/60 bg-violet/15 text-ink" : "border-line-strong bg-surface-1/80 text-ink-muted hover:border-ink-faint hover:text-ink",
+      )}
+    >
+      <span className={on ? "text-violet" : undefined}>{icon}</span>
+      {title}
+    </button>
   );
 }
 

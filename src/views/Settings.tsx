@@ -65,7 +65,7 @@ const SECTIONS: { id: SectionId; name: string; Icon: typeof Keyboard; value: (s:
   },
   { id: "behaviour", name: "Behaviour", Icon: SlidersHorizontal, value: (s) => (s.startWithWindows ? "Starts with Windows" : "Starts when you open it") },
   { id: "timing", name: "Timing", Icon: Timer, value: (s) => (s.timing === "precise" ? "Precise" : "Efficient") },
-  { id: "notice", name: "On-screen notice", Icon: MonitorSmartphone, value: (s) => (s.hud ? (HUD_SPOTS.find((h) => h.id === s.hudPosition)?.name ?? "On") : "Off") },
+  { id: "notice", name: "On-screen notice", Icon: MonitorSmartphone, value: (s) => (s.hud ? `${s.hudStealth ? "Stealth · " : ""}${HUD_SPOTS.find((h) => h.id === s.hudPosition)?.name ?? "On"}` : "Off") },
   { id: "sounds", name: "Sounds", Icon: Volume2, value: (s) => (s.sounds ? `${SOUNDS.find((x) => x.id === s.soundStyle)?.name} · ${s.soundVolume}%` : "Off") },
   {
     id: "appearance",
@@ -337,7 +337,8 @@ function Notice({ s, reg }: { s: Settings; reg: Reg }) {
                     disabled={!s.hud}
                     onClick={() => setSettings({ hudPosition: h.id })}
                     className={cx(
-                      "absolute inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold whitespace-nowrap transition-all",
+                      "absolute inline-flex items-center gap-1.5 border text-[11px] font-bold whitespace-nowrap transition-all",
+                      on && s.hudStealth ? "rounded-full p-1" : "rounded-lg px-2.5 py-1.5",
                       h.x,
                       h.y,
                       on
@@ -345,16 +346,31 @@ function Notice({ s, reg }: { s: Settings; reg: Reg }) {
                         : "border-dashed border-line-strong text-transparent hover:border-ink-faint hover:text-ink-faint",
                     )}
                   >
-                    <span className={cx("size-1.5 rounded-full", on ? "bg-lime" : "bg-current")} />
-                    {on ? "Auto-clicker on" : h.name}
+                    {on && s.hudStealth ? (
+                      <span className="grid size-5 place-items-center rounded-full border-2 border-lime text-lime">
+                        <Check aria-hidden className="size-3" strokeWidth={4} />
+                      </span>
+                    ) : (
+                      <>
+                        <span className={cx("size-1.5 rounded-full", on ? "bg-lime" : "bg-current")} />
+                        {on ? "Auto-clicker on" : h.name}
+                      </>
+                    )}
                   </button>
                 );
               })}
             </div>
           </div>
           <div className="flex flex-col gap-3">
-            <div className="rounded-xl border border-line bg-surface-0/40 px-4">
+            <div className="divide-y divide-line rounded-xl border border-line bg-surface-0/40 px-4">
               <SwitchRow title="Show the notice" checked={s.hud} onChange={(hud) => setSettings({ hud })} />
+              <SwitchRow
+                title="Stealth"
+                hint="Just a small circle: a green ✓ for on, a red ✕ for off."
+                checked={s.hudStealth}
+                disabled={!s.hud}
+                onChange={(hudStealth) => setSettings({ hudStealth })}
+              />
             </div>
             <p className="text-xs leading-relaxed text-ink-muted">
               Shows for a moment when you switch bindings, a profile or a single binding on or off. For it to appear over a game, run the game in borderless or windowed fullscreen.

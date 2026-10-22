@@ -103,6 +103,7 @@ const defaults = (): Data => ({
     ignoreForeignInjected: true,
     hud: true,
     hudPosition: "topCenter",
+    hudStealth: false,
     sounds: true,
     soundStyle: "click",
     soundVolume: 30,

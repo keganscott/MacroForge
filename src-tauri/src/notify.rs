@@ -18,6 +18,7 @@ struct Prefs {
     style: SoundStyle,
     volume: u8,
     pos: HudPosition,
+    stealth: bool,
     accent: (u8, u8, u8),
 }
 
@@ -42,6 +43,7 @@ impl Prefs {
             style: s.sound_style,
             volume: s.sound_volume,
             pos: s.hud_position,
+            stealth: s.hud_stealth,
             accent: accent_rgb(&s.accent),
         }
     }
@@ -120,7 +122,7 @@ impl UiNotifier {
             return;
         }
         #[cfg(windows)]
-        crate::hud::show(crate::hud::Notice { text: hud.text.clone(), on: hud.on, pos: p.pos, accent: p.accent });
+        crate::hud::show(crate::hud::Notice { text: hud.text.clone(), on: hud.on, pos: p.pos, stealth: p.stealth, accent: p.accent });
     }
 }
 

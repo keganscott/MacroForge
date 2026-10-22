@@ -89,6 +89,8 @@ export interface Settings {
   ignoreForeignInjected: boolean;
   hud: boolean;
   hudPosition: HudPosition;
+  /** The notice is a small check / X circle instead of the full line. */
+  hudStealth: boolean;
   sounds: boolean;
   soundStyle: SoundStyle;
   soundVolume: number;

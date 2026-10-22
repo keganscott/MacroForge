@@ -253,6 +253,9 @@ pub struct Settings {
     /// The small on-screen notice when a toggle or the master switch changes.
     pub hud: bool,
     pub hud_position: HudPosition,
+    /// Stealth: the notice is just a small circle (a check for on, an X for
+    /// off) instead of the full line with the name.
+    pub hud_stealth: bool,
     pub sounds: bool,
     pub sound_style: SoundStyle,
     /// 0-100. Cues are quiet by design; 30 is the default.
@@ -328,6 +331,7 @@ impl Default for Settings {
             ignore_foreign_injected: true,
             hud: true,
             hud_position: HudPosition::TopCenter,
+            hud_stealth: false,
             sounds: true,
             sound_style: SoundStyle::Click,
             sound_volume: 30,
